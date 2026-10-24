@@ -1,0 +1,38 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Location demo | Luma</title>
+    <style>
+      body { font: 1rem/1.5 system-ui, sans-serif; max-width: 38rem; margin: 3rem auto; padding: 0 1rem; }
+      button { font: inherit; padding: .6rem 1rem; margin: .5rem .5rem .5rem 0; }
+      select { font: inherit; padding: .5rem; max-width: 100%; }
+      output { display: block; margin: .5rem 0 1rem; }
+      #error { color: #a21d2a; }
+      #result { white-space: pre-wrap; }
+    </style>
+    <script type="module" src="/location/client.mjs"></script>
+  </head>
+  <body>
+    <main>
+      <h1>Location demo</h1>
+      <label for="location-choice">Location</label>
+      <select id="location-choice">
+        <option value="device">Current device</option>
+        <option value="hollywood_boulevard">Hollywood Boulevard (Hollywood &amp; Vine)</option>
+        <option value="cairo_egyptian_museum">Cairo Egyptian Museum</option>
+        <option value="jeju">Jeju City</option>
+        <option value="rio_de_janeiro">Rio de Janeiro</option>
+      </select>
+      <p id="status" role="status">Requesting device location…</p>
+      <p id="error" role="alert"></p>
+      <button id="retry" type="button" hidden>Try again</button>
+      <h2>Current conditions</h2>
+      <output id="coordinates"></output>
+      <output id="weather"></output>
+      <button id="preview" type="button" disabled>Preview next radio section</button>
+      <output id="result" aria-live="polite"></output>
+    </main>
+  </body>
+</html>

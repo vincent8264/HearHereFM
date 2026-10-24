@@ -26,6 +26,17 @@ It records one utterance and returns its text for the separately owned LLM.
 `POST /voice/transcribe` also accepts uploaded recordings. See
 [voice setup and desktop activation](docs/voice.md) for Siri and Windows Voice Access.
 
+To try device location in a browser, start the server and open
+<http://127.0.0.1:8000/location> on the same device. Allow location access when
+prompted, or choose a demo preset for Hollywood Boulevard, the Cairo Egyptian
+Museum, Jeju City, or Rio de Janeiro. The page sends the selected coordinates
+to `/weather`; its optional radio preview sends the coordinates, weather, and
+local time to `/radio/next`. No coordinates need to be typed. A browser on
+another device requires an HTTPS origin for device location permission; presets
+work without it. See
+[`docs/contracts.md`](docs/contracts.md#weather-and-location) for the integration
+boundary.
+
 ## Prerequisites and uv installation
 
 Install Git and [uv](https://docs.astral.sh/uv/getting-started/installation/).
@@ -100,6 +111,9 @@ uv run --locked pytest
 uv run --locked ruff check .
 uv run --locked ruff format --check .
 ```
+
+The browser location client also has dependency-free JavaScript tests:
+`node --test tests/test_device_location.mjs` (requires Node.js).
 
 To apply formatting to code you changed, run `uv run --locked ruff format .`.
 
