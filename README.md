@@ -14,6 +14,11 @@ to pre-generate the next narration and poll for a ready audio URL. `POST /tts`
 also supports synchronous generation.
 See [TTS setup and integration](docs/tts.md) to download the model and generate audio.
 
+Headless speech input is available with `uv run --locked python -m app.voice`.
+It records one utterance and returns its text for the separately owned LLM.
+`POST /voice/transcribe` also accepts uploaded recordings. See
+[voice setup and desktop activation](docs/voice.md) for Siri and Windows Voice Access.
+
 ## Prerequisites and uv installation
 
 Install Git and [uv](https://docs.astral.sh/uv/getting-started/installation/).
