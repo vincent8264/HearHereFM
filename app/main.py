@@ -12,3 +12,5 @@ app.include_router(radio_router)
 def health() -> dict[str, str]:
     """Report whether the application is running."""
     return {"status": "ok"}
+
+
