@@ -2,10 +2,11 @@
 
 A small Python 3.12 and FastAPI repository for a team hackathon. It has a
 health endpoint, tests, a smoke test, Ruff checks, and cross-platform CI.
-The personal radio route is scaffolded at `POST /radio/next`; it currently
-returns HTTP 501 for valid coordinates while weather, places, Spotify, LLM,
-and TTS integrations remain TODOs. See [`docs/contracts.md`](docs/contracts.md)
-for the proposed request and response shapes.
+`POST /radio/next` alternates music and narration based on the section that
+just ended. GPT-6 Luna generates narration text or chooses a song using the
+supplied location, weather, and local time. Spotify playback, TTS
+audio, weather fetching, and local place facts remain integration work. See
+[`docs/contracts.md`](docs/contracts.md) for the request and response shapes.
 
 ## Prerequisites and uv installation
 
@@ -95,9 +96,28 @@ uv sync --locked
 ```
 
 Commit changes to both dependency files in the same feature branch. Do not
-commit `.venv`. The app currently requires no environment variables or API
-keys. `.env.example` documents a placeholder for future configuration. Keep
-real `.env` files local and never commit credentials.
+commit `.venv`. The radio route requires `OPENAI_API_KEY` in the server process
+environment or in a `.env` file at the repository root. A process environment
+value takes precedence over `.env`. Copy `.env.example` to `.env` and replace
+the placeholder with your key. Keep real keys local and never commit
+credentials. Requests to the model use `gpt-6-luna`, and each call uses API
+credits. Automated tests mock the model and do not use credits.
+
+Example radio request after a music section ends:
+
+```json
+{
+  "latitude": 37.7749,
+  "longitude": -122.4194,
+  "weather": "Sunny, 20 C",
+  "time": "18:30",
+  "current_state": "music"
+}
+```
+
+Send this JSON to `POST /radio/next`. Set `current_state` to `narration` after
+the narration ends to receive a song title and artist. The endpoint returns
+text or song metadata; TTS and Spotify playback are separate integrations.
 
 ## Team workflow and AI coding agents
 

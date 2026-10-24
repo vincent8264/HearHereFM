@@ -1,30 +1,38 @@
 """Input and output contracts for a radio decision."""
 
-from typing import Literal
+from datetime import time as TimeOfDay
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
+
+WeatherDescription = Annotated[
+    str, StringConstraints(strip_whitespace=True, min_length=1, max_length=500)
+]
 
 
 class RadioRequest(BaseModel):
-    """The listener's current position, supplied with their permission."""
+    """Context supplied when the current music or narration section ends."""
 
     latitude: float = Field(ge=-90, le=90)
     longitude: float = Field(ge=-180, le=180)
+    weather: WeatherDescription
+    time: TimeOfDay
+    current_state: Literal["music", "narration"]
 
 
 class MusicAction(BaseModel):
-    """A Spotify track selected for the listener."""
+    """A song selected for later Spotify resolution and playback."""
 
     mode: Literal["music"] = "music"
-    spotify_uri: str
+    song_title: str
+    artist: str
 
 
 class NarrationAction(BaseModel):
-    """A spoken description of a nearby place."""
+    """Text to send to the text-to-speech component."""
 
     mode: Literal["narration"] = "narration"
-    place_name: str
-    audio_url: str
+    text: str
 
 
 type RadioAction = MusicAction | NarrationAction

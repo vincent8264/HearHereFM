@@ -1,47 +1,68 @@
 # Team API contracts
 
-This is the initial contract for the personal radio prototype. Review it with
-component owners before building integrations that depend on it.
+This is the current contract for the personal radio prototype. Coordinate any
+further changes with the client, weather, Spotify, and TTS component owners.
 
 ## Flow
 
-The client obtains the listener's location with permission and calls
-`POST /radio/next`. The backend will fetch weather and nearby place facts,
-choose one mode, then return one action. Music and narration are separate
-playback sections; their audio must not overlap.
+The client obtains the listener's location with permission. When the current
+section ends, it calls `POST /radio/next` with the coordinates, a weather
+description, the listener-local time, and the section that just ended.
+The backend alternates modes:
+music ends -> narration, narration ends -> music. GPT-6 Luna writes the next
+narration or names the next song. Music and narration are separate playback
+sections; their audio must not overlap.
 
 ## HTTP contract
 
-`POST /radio/next` accepts JSON coordinates:
+`POST /radio/next` accepts:
 
 ```json
-{"latitude": 37.7749, "longitude": -122.4194}
+{
+  "latitude": 37.7749,
+  "longitude": -122.4194,
+  "weather": "Sunny, 20 C",
+  "time": "18:30",
+  "current_state": "music"
+}
 ```
 
 Latitude must be between -90 and 90; longitude must be between -180 and 180.
-The intended success response is one of:
+`weather` is a nonempty description of at most 500 characters. `current_state`
+is `music` or `narration` and means the section that just ended. `time` is
+required and represents the listener's local clock time, typically in `HH:MM`
+format; the backend does not infer it from coordinates. A success response
+after music is:
 
 ```json
-{"mode": "music", "spotify_uri": "spotify:track:example"}
+{"mode": "narration", "text": "The sunshine brings a gentle warmth to this stop..."}
 ```
+
+After narration, the response is:
 
 ```json
-{"mode": "narration", "place_name": "Example Place", "audio_url": "https://example.com/narration"}
+{"mode": "music", "song_title": "Here Comes the Sun", "artist": "The Beatles"}
 ```
 
-The route currently returns HTTP 501 for valid input until integrations are
-implemented. Invalid input returns HTTP 422 through FastAPI validation.
+The narration text is ready for a separate TTS component. The song has not
+been resolved to a Spotify track or checked for availability. Invalid input
+returns HTTP 422. Missing `OPENAI_API_KEY` returns HTTP 503. Model or
+model-output failure returns HTTP 502.
 
 ## Component boundaries and TODOs
 
 | Component | Responsibility | Status |
 | --- | --- | --- |
-| Client | Obtain location; present music or narration as separate sections | TODO |
-| Weather | Fetch current conditions for coordinates | TODO |
-| Places | Find nearby landmarks and factual source material | TODO |
-| Decision | Choose one mode from weather, place facts, and user context | TODO |
-| Spotify | Authenticate the listener, choose a track, and control playback | TODO |
-| Narration | Generate a factual script and TTS audio | TODO |
+| Client | Obtain location; send weather and ended section; play music and narration separately | TODO |
+| Weather | Supply a current weather description for coordinates | TODO |
+| Decision | Alternate modes after each section | Implemented |
+| LLM | Generate narration text or choose a song from location, weather, and local time | Implemented |
+| Spotify | Resolve the chosen title and artist to a playable track, then control playback | TODO |
+| TTS | Convert narration text to speech audio | TODO |
+| Places | Supply verified local facts for richer narration | Future TODO |
 
-External providers, credentials, error responses, session behavior, and
-component owners are still to be agreed by the team.
+Spotify track search is a future option for resolving model-chosen songs. Until
+then, the music response is a suggestion, not a playable Spotify URI. The
+server does not store session state: callers send the current section on each
+request. Spotify, TTS, weather provider, and richer place-fact contracts still
+need team agreement.
