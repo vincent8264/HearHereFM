@@ -2,16 +2,17 @@
 
 A small Python 3.12 and FastAPI repository for a team hackathon. It has a
 health endpoint, tests, a smoke test, Ruff checks, and cross-platform CI.
-`POST /radio/next` alternates music and narration based on the section that
-currently playing (or just ended). GPT-6 Luna generates narration text or chooses
-a song using the supplied location, weather, and local time. `GET /weather`
+`POST /radio/next` uses GPT-6 Luna to choose music or narration and generate its
+content from location, weather, local time, recent played history, and optional
+listener input. The backend checks for repetition and limits consecutive songs.
+`GET /weather`
 fetches current conditions for supplied coordinates. The backend also looks up
 nearby named sights and museums through Geoapify and resolves suggested songs to Spotify
 track URIs through a separate endpoint. Spotify playback is handled by the client. See
 [`docs/contracts.md`](docs/contracts.md) for the request and response shapes.
 
-Local English TTS uses Kokoro on CPU. Submit `POST /tts/jobs` during music playback
-to pre-generate the next narration and poll for a ready audio URL. `POST /tts`
+Local English TTS uses Kokoro on CPU. When radio selects narration, submit its
+text to `POST /tts/jobs` during playback and poll for a ready audio URL. `POST /tts`
 also supports synchronous generation.
 See [TTS setup and integration](docs/tts.md) to download the model and generate audio.
 
@@ -120,7 +121,7 @@ environment or `.env`. The backend sends it in an `x-api-key` header. Missing
 credentials or a provider failure leave the radio request working without a
 nearby place.
 
-Example radio request while a music section is playing, to prepare narration:
+Example radio request while a music section is playing:
 
 ```json
 {
@@ -128,17 +129,22 @@ Example radio request while a music section is playing, to prepare narration:
   "longitude": -122.4194,
   "weather": "Sunny, 20 C",
   "time": "18:30",
-  "current_state": "music"
+  "current_state": "music",
+  "played_history": [
+    {"mode": "music", "song_title": "Lovely Day", "artist": "Bill Withers"}
+  ],
+  "user_input": "Play more lively music"
 }
 ```
 
-Send this JSON to `POST /radio/next`, then send the returned `text` to
-`POST /tts/jobs`. Set `current_state` to `narration` to prepare a song title and
-artist for the following section. Send that music response to
+Send this JSON to `POST /radio/next`. If the response mode is `narration`, send
+its `text` to `POST /tts/jobs`. If it is `music`, send its title and artist to
 `POST /spotify/resolve` with a two-letter market, such as `US`, to obtain a
-`spotify_uri` for playback. Calling after playback ends also works, but
+`spotify_uri` for playback. Add each section to `played_history` once playback
+starts; send at most the latest ten in oldest-to-newest order. `user_input` is
+optional and can be omitted. Calling after playback ends also works, but
 requires waiting for generation. TTS and Spotify playback are separate stages;
-the client pauses music before starting a ready narration.
+the client pauses current audio before starting a ready narration.
 
 For both radio modes, the backend searches within 500 metres for a named
 Geoapify sight or museum. If one is nearby, the model receives its name, type, and approximate

@@ -214,7 +214,11 @@ def test_radio_narration_can_be_pre_generated_and_downloaded(
     narration = "A warm breeze follows the sunshine. Enjoy the ocean view."
     monkeypatch.setattr(radio_service, "find_nearby_place", lambda *_args: None)
     monkeypatch.setattr(
-        llm, "_generate", lambda *_args: llm.NarrationResult(text=narration)
+        llm,
+        "_generate",
+        lambda *_args, **_kwargs: llm.RadioDecision(
+            mode="narration", text=narration, song_title=None, artist=None
+        ),
     )
     response = client.post(
         "/radio/next",
