@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 from app.main import app
 from app.radio import llm
+from app.radio import service as radio_service
 from app.tts.jobs import QueueFullError, SpeechJobs
 from app.tts.service import TTSService, get_tts_service
 
@@ -211,6 +212,7 @@ def test_radio_narration_can_be_pre_generated_and_downloaded(
     client: TestClient, service: TTSService, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     narration = "A warm breeze follows the sunshine. Enjoy the ocean view."
+    monkeypatch.setattr(radio_service, "find_nearby_place", lambda *_args: None)
     monkeypatch.setattr(
         llm, "_generate", lambda *_args: llm.NarrationResult(text=narration)
     )

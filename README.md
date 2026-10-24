@@ -5,8 +5,9 @@ health endpoint, tests, a smoke test, Ruff checks, and cross-platform CI.
 `POST /radio/next` alternates music and narration based on the section that
 currently playing (or just ended). GPT-6 Luna generates narration text or chooses
 a song using the supplied location, weather, and local time. `GET /weather`
-fetches current conditions for supplied coordinates. Spotify playback and local
-place facts remain integration work. See
+fetches current conditions for supplied coordinates. The backend also looks up
+nearby named sights and museums through Geoapify and resolves suggested songs to Spotify
+track URIs through a separate endpoint. Spotify playback is handled by the client. See
 [`docs/contracts.md`](docs/contracts.md) for the request and response shapes.
 
 Local English TTS uses Kokoro on CPU. Submit `POST /tts/jobs` during music playback
@@ -114,6 +115,16 @@ the placeholder with your key. Keep real keys local and never commit
 credentials. Requests to the model use `gpt-6-luna`, and each call uses API
 credits. Automated tests mock the model and do not use credits.
 
+For `POST /spotify/resolve`, set `SPOTIFY_CLIENT_ID` and
+`SPOTIFY_CLIENT_SECRET` in the server environment or `.env`. These are server-side
+Spotify app credentials and must not be sent to the client. The resolver uses
+Spotify client credentials to search its catalog; it does not control playback.
+
+For nearby places in `POST /radio/next`, set `GEOAPIFY_API_KEY` in the server
+environment or `.env`. The backend sends it in an `x-api-key` header. Missing
+credentials or a provider failure leave the radio request working without a
+nearby place.
+
 Example radio request while a music section is playing, to prepare narration:
 
 ```json
@@ -128,9 +139,16 @@ Example radio request while a music section is playing, to prepare narration:
 
 Send this JSON to `POST /radio/next`, then send the returned `text` to
 `POST /tts/jobs`. Set `current_state` to `narration` to prepare a song title and
-artist for the following section. Calling after playback ends also works, but
+artist for the following section. Send that music response to
+`POST /spotify/resolve` with a two-letter market, such as `US`, to obtain a
+`spotify_uri` for playback. Calling after playback ends also works, but
 requires waiting for generation. TTS and Spotify playback are separate stages;
 the client pauses music before starting a ready narration.
+
+For both radio modes, the backend searches within 500 metres for a named
+Geoapify sight or museum. If one is nearby, the model receives its name, type, and approximate
+distance. If the lookup fails or finds nothing, the radio request continues
+without place context. The model is instructed not to invent facts about a place.
 
 ## Team workflow and AI coding agents
 

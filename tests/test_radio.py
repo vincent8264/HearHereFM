@@ -8,7 +8,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.radio import llm
+from app.places.service import NearbyPlace, PlaceLookupError
+from app.radio import llm, service
+
+
+@pytest.fixture(autouse=True)
+def no_live_places(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(service, "find_nearby_place", lambda *_args: None)
 
 
 @pytest.fixture
@@ -93,6 +99,59 @@ def test_narration_ending_generates_song(model_calls: list[dict[str, object]]) -
     assert len(model_calls) == 1
     assert model_calls[0]["text_format"] is llm.SongResult
     assert json.loads(model_calls[0]["input"])["time"] == "18:30"
+
+
+@pytest.mark.parametrize("current_state", ["music", "narration"])
+def test_nearby_place_reaches_model_for_both_actions(
+    model_calls: list[dict[str, object]],
+    monkeypatch: pytest.MonkeyPatch,
+    current_state: str,
+) -> None:
+    monkeypatch.setattr(
+        service,
+        "find_nearby_place",
+        lambda *_args: NearbyPlace("Balboa Park", "attraction", 120),
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/radio/next",
+            json={
+                "latitude": 32.7157,
+                "longitude": -117.1611,
+                "weather": "Sunny, 20 C",
+                "time": "18:30",
+                "current_state": current_state,
+            },
+        )
+    assert response.status_code == 200
+    assert json.loads(model_calls[0]["input"])["nearby_place"] == {
+        "name": "Balboa Park",
+        "kind": "attraction",
+        "distance_m": 120,
+    }
+    assert "nearby_place" in model_calls[0]["instructions"]
+
+
+def test_place_lookup_failure_keeps_radio_available(
+    model_calls: list[dict[str, object]], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    def fail(*_args: object) -> None:
+        raise PlaceLookupError("Geoapify unavailable")
+
+    monkeypatch.setattr(service, "find_nearby_place", fail)
+    with TestClient(app) as client:
+        response = client.post(
+            "/radio/next",
+            json={
+                "latitude": 32.7157,
+                "longitude": -117.1611,
+                "weather": "Sunny, 20 C",
+                "time": "18:30",
+                "current_state": "music",
+            },
+        )
+    assert response.status_code == 200
+    assert "nearby_place" not in json.loads(model_calls[0]["input"])
 
 
 @pytest.mark.parametrize(
