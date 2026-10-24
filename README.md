@@ -2,12 +2,15 @@
 
 A small Python 3.12 and FastAPI repository for a team hackathon. It has a
 health endpoint, tests, a smoke test, Ruff checks, and cross-platform CI.
-The personal radio route is scaffolded at `POST /radio/next`; it currently
-returns HTTP 501 for valid coordinates while weather, places, Spotify, LLM,
-and TTS integrations remain TODOs. See [`docs/contracts.md`](docs/contracts.md)
-for the proposed request and response shapes.
+`POST /radio/next` alternates music and narration based on the section that
+currently playing (or just ended). GPT-6 Luna generates narration text or chooses
+a song using the supplied location, weather, and local time. Spotify playback,
+weather fetching, and local place facts remain integration work. See
+[`docs/contracts.md`](docs/contracts.md) for the request and response shapes.
 
-Local English TTS is available separately at `POST /tts`, using Kokoro on CPU.
+Local English TTS uses Kokoro on CPU. Submit `POST /tts/jobs` during music playback
+to pre-generate the next narration and poll for a ready audio URL. `POST /tts`
+also supports synchronous generation.
 See [TTS setup and integration](docs/tts.md) to download the model and generate audio.
 
 ## Prerequisites and uv installation
@@ -98,9 +101,30 @@ uv sync --locked
 ```
 
 Commit changes to both dependency files in the same feature branch. Do not
-commit `.venv`. The app currently requires no environment variables or API
-keys. `.env.example` documents a placeholder for future configuration. Keep
-real `.env` files local and never commit credentials.
+commit `.venv`. The radio route requires `OPENAI_API_KEY` in the server process
+environment or in a `.env` file at the repository root. A process environment
+value takes precedence over `.env`. Copy `.env.example` to `.env` and replace
+the placeholder with your key. Keep real keys local and never commit
+credentials. Requests to the model use `gpt-6-luna`, and each call uses API
+credits. Automated tests mock the model and do not use credits.
+
+Example radio request while a music section is playing, to prepare narration:
+
+```json
+{
+  "latitude": 37.7749,
+  "longitude": -122.4194,
+  "weather": "Sunny, 20 C",
+  "time": "18:30",
+  "current_state": "music"
+}
+```
+
+Send this JSON to `POST /radio/next`, then send the returned `text` to
+`POST /tts/jobs`. Set `current_state` to `narration` to prepare a song title and
+artist for the following section. Calling after playback ends also works, but
+requires waiting for generation. TTS and Spotify playback are separate stages;
+the client pauses music before starting a ready narration.
 
 ## Team workflow and AI coding agents
 

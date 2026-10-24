@@ -21,7 +21,9 @@ Default voice: `af_sarah`, American English, speed 1.0.
 
 ### Pre-generate during music playback (recommended)
 
-1. While a song is playing, send `POST /tts/jobs` with `{"text": "Welcome to San Diego."}`.
+1. While a song is playing, call `POST /radio/next` with `current_state: "music"`
+   and the location, weather, and local time from [the radio contract](contracts.md).
+   Send its narration `text` to `POST /tts/jobs` as `{"text": "..."}`.
 2. The API returns HTTP 202 immediately with `job_id`, `status: "queued"`,
    `status_url`, `audio_url: null`, and `error: null`.
 3. Poll `status_url` every 1–2 seconds. Status progresses through `queued`,
@@ -56,7 +58,8 @@ Successful response (HTTP 200):
 ```
 
 The WAV is ready when the response arrives. Fetch it with `GET` at `audio_url`.
-The radio component can put this URL directly into `NarrationAction.audio_url`.
+The radio endpoint returns `NarrationAction.text`; it has no `audio_url` field.
+The client obtains the audio URL separately from TTS and uses it for playback.
 Playback clients must stop or pause music before starting narration.
 Text must be a nonblank string of at most 2,000 characters. Validation failures
 return 422; missing/unloadable models return 503; synthesis/storage failures return

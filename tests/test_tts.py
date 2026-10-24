@@ -11,6 +11,7 @@ import soundfile as sf
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.radio import llm
 from app.tts.jobs import QueueFullError, SpeechJobs
 from app.tts.service import TTSService, get_tts_service
 
@@ -204,3 +205,35 @@ def test_unexpected_failure_is_terminal_and_does_not_stop_worker() -> None:
         assert wait_for_job(jobs, next_job.job_id).status == "ready"
     finally:
         jobs.close()
+
+
+def test_radio_narration_can_be_pre_generated_and_downloaded(
+    client: TestClient, service: TTSService, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    narration = "A warm breeze follows the sunshine. Enjoy the ocean view."
+    monkeypatch.setattr(
+        llm, "_generate", lambda *_args: llm.NarrationResult(text=narration)
+    )
+    response = client.post(
+        "/radio/next",
+        json={
+            "latitude": 32.7157,
+            "longitude": -117.1611,
+            "weather": "Sunny, 20 C",
+            "time": "18:30",
+            "current_state": "music",
+        },
+    )
+    assert response.status_code == 200
+    assert response.json() == {"mode": "narration", "text": narration}
+    queued = client.post("/tts/jobs", json={"text": response.json()["text"]})
+    assert queued.status_code == 202
+    wait_for_job(app.state.speech_jobs, queued.json()["job_id"])
+    ready = client.get(queued.json()["status_url"]).json()
+    assert ready["status"] == "ready"
+    audio = client.get(ready["audio_url"])
+    assert audio.status_code == 200
+    assert audio.content[:4] == b"RIFF"
+    service._engine.create.assert_called_once_with(
+        narration, voice="af_sarah", speed=1.0, lang="en-us"
+    )
