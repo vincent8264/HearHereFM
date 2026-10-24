@@ -11,7 +11,11 @@ description, the listener-local time, and the current section. The backend
 returns the opposite mode: music -> narration, narration -> music. Calling
 after a section ends is also supported, but adds generation latency.
 
-GPT-6 Luna writes the next narration or names the next song. For narration,
+Before generation, the backend looks for a named sight or museum through
+Geoapify Places API v2 within 500 metres of the listener. If found, its name, type,
+and approximate distance inform both narration and song selection. Provider
+failure falls back to weather, time, and coordinates alone. GPT-6 Luna writes
+the next narration or names the next song. For narration,
 the client sends the returned `text` to `POST /tts/jobs`, then polls the returned
 `status_url` every 1–2 seconds. When `status` is `ready`, `audio_url` points to
 the completed WAV. Keep music playing until the narration is prepared, then
@@ -51,29 +55,56 @@ When requesting the section following narration, the response is:
 {"mode": "music", "song_title": "Here Comes the Sun", "artist": "The Beatles"}
 ```
 
-The narration text is ready for a separate TTS component. The song has not
-been resolved to a Spotify track or checked for availability. Invalid input
-returns HTTP 422. Missing `OPENAI_API_KEY` returns HTTP 503. Model or
-model-output failure returns HTTP 502.
+The narration text is ready for a separate TTS component. The music response
+contains a suggestion, not a Spotify URI. The client sends it to
+`POST /spotify/resolve`:
+
+```json
+{"song_title": "Here Comes the Sun", "artist": "The Beatles", "market": "US"}
+```
+
+The resolver searches Spotify with server-side app credentials and returns:
+
+```json
+{"spotify_uri": "spotify:track:6rqhFgbbKwnb9MLmUQDhG6"}
+```
+
+`market` is a required two-letter uppercase Spotify country code. It filters
+search results to tracks available in that market. The resolver checks that
+both title and artist match; a remastered or mixed version can match. A URI
+does not start playback or guarantee the listener's account/device can play it.
+No matching track returns 404, Spotify failure returns 502, missing Spotify
+app credentials returns 503, and invalid input returns 422. If no match is
+found, the client should request another song or choose a fallback.
+
+For `POST /radio/next`, invalid input returns HTTP 422. Missing
+`OPENAI_API_KEY` returns HTTP 503. Model or model-output failure returns HTTP 502.
 
 ## Component boundaries and TODOs
 
 | Component | Responsibility | Status |
 | --- | --- | --- |
-| Client | Obtain location; request the next section during playback; pre-generate narration; play sections separately | TODO |
+| Client | Obtain location; request the next section during playback; pre-generate narration; call Spotify resolver; play sections separately | External to this repo |
 | Weather | Fetch current conditions via `GET /weather`; client formats the description for radio | Implemented |
 | Decision | Alternate modes after each section | Implemented |
 | LLM | Generate narration text or choose a song from location, weather, and local time | Implemented |
-| Spotify | Resolve the chosen title and artist to a playable track, then control playback | TODO |
+| Spotify resolver | Match the chosen title and artist to a market-filtered Spotify track URI | Implemented |
+| Spotify playback | Use the URI to control playback | External to this repo |
 | TTS | Convert English narration to WAV with Kokoro; queue jobs and serve audio URLs | Implemented |
-| Places | Supply verified local facts for richer narration | Future TODO |
+| Places | Find a nearby named sight or museum with Geoapify; detailed verified facts are future work | Basic lookup implemented |
 
-Spotify track search is a future option for resolving model-chosen songs. Until
-then, the music response is a suggestion, not a playable Spotify URI. The
-radio endpoint does not store playback session state: callers send the current
+The place lookup requires `GEOAPIFY_API_KEY` in the server environment or a
+local `.env` file. It requests up to 20 nearby results and chooses the nearest
+named sight or museum. It is best effort and may add up to six seconds before
+model generation. The client should credit both
+[OpenStreetMap contributors](https://www.openstreetmap.org/copyright) and
+[Geoapify](https://www.geoapify.com/) where users can see the source of place
+names, as required for Geoapify's free plan.
+
+The radio endpoint does not store playback session state: callers send the current
 section on each request. TTS job status is stored in memory and requires one
-server worker. Spotify and richer place-fact contracts still
-need team agreement.
+server worker. Spotify playback and richer place-fact contracts still need
+team agreement.
 
 ## Weather and location
 
