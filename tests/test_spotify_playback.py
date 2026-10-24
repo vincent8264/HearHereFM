@@ -33,3 +33,28 @@ def test_play_track_request():
 def test_rejects_invalid_track_uri():
     with pytest.raises(ValueError):
         SpotifyPlayback("test-token").play_track("spotify:track:example")
+
+
+def test_pause_reports_spotify_http_status():
+    from urllib.error import HTTPError
+
+    from app.music.spotify_playback import SpotifyPlaybackError
+
+    with (
+        patch(
+            "app.music.spotify_playback.urlopen",
+            side_effect=HTTPError(
+                "https://api.spotify.com/v1/me/player/pause", 403, "Forbidden", {}, None
+            ),
+        ),
+        pytest.raises(SpotifyPlaybackError, match="HTTP 403"),
+    ):
+        SpotifyPlayback("test-token").pause()
+
+
+@pytest.mark.parametrize("status", [200, 204])
+def test_pause_accepts_success_with_no_json_body(status):
+    response = FakeResponse()
+    response.status = status
+    with patch("app.music.spotify_playback.urlopen", return_value=response):
+        assert SpotifyPlayback("test-token").pause() == {"status": "paused"}

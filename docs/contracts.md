@@ -189,6 +189,6 @@ on the LAN therefore needs HTTPS. The client requests high accuracy and displays
 the reported accuracy, but the browser does not guarantee use of GPS hardware.
 
 The Python helper `app.location_api.get_location.get_my_location()` estimates
-the backend server's location through ipapi.co. It is not exposed as an HTTP
+the backend server's location through ipapi.co, with ipwho.is as a fallback if the first provider fails. It is not exposed as an HTTP
 route and is not used by the browser client or weather/radio endpoints. Neither
 the IP helper nor the weather provider request sends an API key.

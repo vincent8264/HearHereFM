@@ -32,10 +32,14 @@ class SpotifyPlayback:
         )
         try:
             with urlopen(request, timeout=10) as response:
-                if response.status == 204:
+                if response.status == 204 or method == "PUT":
                     return {}
                 return json.load(response)
-        except (HTTPError, URLError, TimeoutError, ValueError) as exc:
+        except HTTPError as exc:
+            raise SpotifyPlaybackError(
+                f"Spotify returned HTTP {exc.code} for {method} playback control."
+            ) from exc
+        except (URLError, TimeoutError, ValueError) as exc:
             raise SpotifyPlaybackError("Could not control Spotify playback.") from exc
 
     def pause(self) -> dict[str, str]:

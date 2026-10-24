@@ -106,10 +106,16 @@ def test_spotify_confirmation_is_required_before_recording_history(
 ) -> None:
     services = DesktopServices()
     player = Mock()
-    player.devices.return_value = {"devices": [{"id": "device", "is_active": True}]}
+    player.devices.return_value = {
+        "devices": [
+            {"id": "native", "name": "MacBook", "is_active": True},
+            {"id": "device", "name": "Web Player (Chrome)", "is_active": False},
+        ]
+    }
     player.state.return_value = {
         "track_uri": "spotify:track:4iV5W9uYEdYUVa79Axb7Rh",
         "is_playing": True,
+        "device_id": "device",
     }
     monkeypatch.setattr(integrations, "get_player", lambda: player)
     section = PreparedSection(
@@ -117,7 +123,7 @@ def test_spotify_confirmation_is_required_before_recording_history(
         uri="spotify:track:4iV5W9uYEdYUVa79Axb7Rh",
     )
     assert services.start_music(section, Event()) is True
-    player.play_track.assert_called_once()
+    player.play_track.assert_called_once_with(section.uri, "device")
     player.state.assert_called_once()
 
 
@@ -128,7 +134,7 @@ def test_spotify_missing_device_is_actionable(monkeypatch: pytest.MonkeyPatch) -
     monkeypatch.setattr(integrations, "get_player", lambda: player)
     monkeypatch.setattr(integrations, "dotenv_values", lambda *args, **kwargs: {})
     monkeypatch.delenv("SPOTIFY_DEVICE_ID", raising=False)
-    with pytest.raises(SpotifyPlaybackError, match="Open Spotify"):
+    with pytest.raises(SpotifyPlaybackError, match="Open Spotify Web Player"):
         services.start_music(
             PreparedSection(
                 MusicAction(song_title="Song", artist="Artist"),
@@ -185,3 +191,34 @@ def test_narration_preparation_produces_audio_path(
     prepared = DesktopServices().prepare(request)
     assert prepared.audio_path == tmp_path / "narration.wav"
     tts.synthesize.assert_called_once_with("Hello radio.")
+
+
+def test_native_spotify_device_is_not_selected(monkeypatch: pytest.MonkeyPatch) -> None:
+    player = Mock()
+    player.devices.return_value = {
+        "devices": [{"id": "native", "name": "MacBook", "is_active": True}]
+    }
+    monkeypatch.setattr(integrations, "get_player", lambda: player)
+    monkeypatch.setattr(integrations, "dotenv_values", lambda *args, **kwargs: {})
+    monkeypatch.delenv("SPOTIFY_DEVICE_ID", raising=False)
+    with pytest.raises(SpotifyPlaybackError, match="Web Player"):
+        DesktopServices().start_music(
+            PreparedSection(
+                MusicAction(song_title="Song", artist="Artist"),
+                uri="spotify:track:4iV5W9uYEdYUVa79Axb7Rh",
+            ),
+            Event(),
+        )
+    player.play_track.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    "device, paused", [("Web Player (Safari)", True), ("MacBook", False)]
+)
+def test_pause_controls_only_web_player(monkeypatch, device, paused) -> None:
+    player = Mock()
+    player.state.return_value = {"is_playing": True, "device": device}
+    monkeypatch.setattr(integrations, "is_connected", lambda: True)
+    monkeypatch.setattr(integrations, "get_player", lambda: player)
+    DesktopServices().pause()
+    assert player.pause.called is paused

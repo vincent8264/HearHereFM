@@ -194,3 +194,25 @@ def test_authorized_user_can_search_without_client_secret(
     )
     post.assert_not_called()
     assert get.call_args.kwargs["headers"] == {"Authorization": "Bearer user-token"}
+
+
+def test_resolve_route_uses_connected_user_token(
+    spotify_responses, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.spotify import router
+
+    post, get = spotify_responses
+    monkeypatch.setattr(router, "is_connected", lambda: True)
+    monkeypatch.setattr(router, "get_player", lambda: Mock(access_token="user-token"))
+    with TestClient(app) as client:
+        response = client.post(
+            "/spotify/resolve",
+            json={
+                "song_title": "Here Comes the Sun",
+                "artist": "The Beatles",
+                "market": "US",
+            },
+        )
+    assert response.status_code == 200
+    post.assert_not_called()
+    assert get.call_args.kwargs["headers"] == {"Authorization": "Bearer user-token"}

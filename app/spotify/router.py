@@ -5,6 +5,8 @@ from typing import Annotated
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field, StringConstraints
 
+from app.music.router import get_player, is_connected
+from app.music.spotify_playback import SpotifyPlaybackError
 from app.spotify.service import (
     SpotifyConfigurationError,
     SpotifyLookupError,
@@ -38,10 +40,15 @@ class ResolveResponse(BaseModel):
 def resolve(request: ResolveRequest) -> ResolveResponse:
     """Convert an LLM song suggestion to a verified Spotify catalog URI."""
     try:
-        uri = resolve_song(request.song_title, request.artist, request.market)
+        token = get_player().access_token if is_connected() else None
+        uri = resolve_song(
+            request.song_title, request.artist, request.market, access_token=token
+        )
     except SpotifyConfigurationError as exc:
         raise HTTPException(status_code=503, detail=str(exc)) from exc
     except SpotifyLookupError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+    except SpotifyPlaybackError as exc:
         raise HTTPException(status_code=502, detail=str(exc)) from exc
     except SpotifyNoMatchError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc

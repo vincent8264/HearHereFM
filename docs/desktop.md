@@ -52,30 +52,36 @@ SPOTIFY_MARKET=US
 SPOTIFY_REDIRECT_URI=http://127.0.0.1:8000/spotify/callback
 # RADIO_LATITUDE=32.7157
 # RADIO_LONGITUDE=-117.1611
-# SPOTIFY_DEVICE_ID=your-preferred-device
+# SPOTIFY_DEVICE_ID=your-web-player-device
 ```
 
 If coordinates are omitted, desktop IP geolocation supplies an approximate
-location. Weather is refreshed every five minutes. Geoapify place context remains
+location, using ipapi.co with [ipwho.is](https://ipwhois.io/documentation) as a
+backup when the first provider fails. Weather is refreshed every five minutes. Geoapify place context remains
 optional, as in the radio API. Real keys and generated state remain ignored by Git.
 
 ## Connect Spotify once per daemon lifetime
 
-Register the exact redirect URI in the Spotify developer application. Start the
-official Spotify client on a playback device, then run:
+Register the exact redirect URI in the Spotify developer application. Open
+[Spotify Web Player](https://open.spotify.com/) in your browser, sign in
+with the account you will authorize, and manually play a song once to enable
+browser audio. Keep that tab open, then run:
 
 ```sh
 uv run --locked python -m app.desktop login
 ```
 
-The browser is used only for Spotify's account authorization; it is not a product
-frontend. The callback keeps access/refresh tokens in memory, refreshes expiring
+Spotify's browser pages provide account authorization and music playback.
+The radio controller runs in the background. The callback keeps access/refresh
+tokens in memory, refreshes expiring
 tokens, and never returns them to the caller or LLM. Reconnect after daemon restart.
-Spotify Connect playback requires a supported account/device and playback scopes;
+The desktop controller selects only devices named Web Player, including when
+a preferred device ID is configured. Spotify Connect playback requires a
+supported account/device and playback scopes;
 see [Spotify's player API](https://developer.spotify.com/documentation/web-api/reference/start-a-users-playback).
 Desktop search and playback share the authorized user token through PKCE;
-a client secret is not needed. The standalone `/spotify/resolve` endpoint still
-supports app client credentials for catalog-only callers.
+a client secret is not needed. The standalone `/spotify/resolve` endpoint uses
+the connected user too, or app client credentials for catalog-only callers.
 
 ## macOS Siri setup
 

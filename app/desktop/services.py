@@ -45,7 +45,11 @@ class DesktopServices:
     def pause(self) -> None:
         if is_connected():
             player = get_player()
-            if player.state()["is_playing"]:
+            state = player.state()
+            if (
+                state["is_playing"]
+                and "web player" in (state.get("device") or "").casefold()
+            ):
                 player.pause()
 
     def prompt(self, cancel: Event) -> bool:
@@ -123,21 +127,35 @@ class DesktopServices:
         env = dotenv_values(ENV_FILE, interpolate=False)
         player = get_player()
         device_id = os.getenv("SPOTIFY_DEVICE_ID") or env.get("SPOTIFY_DEVICE_ID")
-        if not device_id:
-            devices = player.devices().get("devices", [])
+        devices = [
+            item
+            for item in player.devices().get("devices", [])
+            if "web player" in item.get("name", "").casefold()
+            and not item.get("is_restricted")
+            and item.get("id")
+        ]
+        if device_id:
+            device = next((item for item in devices if item["id"] == device_id), None)
+        else:
             device = next((item for item in devices if item.get("is_active")), None)
             if device is None:
                 device = next(iter(devices), None)
-            if device is None:
-                raise SpotifyPlaybackError("Open Spotify on a playback device first.")
-            device_id = device["id"]
+        if device is None:
+            raise SpotifyPlaybackError(
+                "Open Spotify Web Player in your browser and play a song once first."
+            )
+        device_id = device["id"]
         if cancel.is_set():
             return False
         player.play_track(section.uri, device_id)
         deadline = monotonic() + 8
         while not cancel.is_set() and monotonic() < deadline:
             state = get_player().state()
-            if state["track_uri"] == section.uri and state["is_playing"]:
+            if (
+                state["track_uri"] == section.uri
+                and state["is_playing"]
+                and state["device_id"] == device_id
+            ):
                 return True
             cancel.wait(0.25)
         if cancel.is_set():
@@ -151,6 +169,11 @@ class DesktopServices:
         checked_at = monotonic()
         while not cancel.is_set():
             state = get_player().state()
+            if (
+                state["is_playing"]
+                and "web player" not in (state.get("device") or "").casefold()
+            ):
+                raise SpotifyPlaybackError("Playback switched away from Web Player.")
             if state["track_uri"] != section.uri or not state["is_playing"]:
                 if remaining is not None and (
                     remaining <= 2500
