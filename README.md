@@ -7,6 +7,9 @@ returns HTTP 501 for valid coordinates while weather, places, Spotify, LLM,
 and TTS integrations remain TODOs. See [`docs/contracts.md`](docs/contracts.md)
 for the proposed request and response shapes.
 
+Local English TTS is available separately at `POST /tts`, using Kokoro on CPU.
+See [TTS setup and integration](docs/tts.md) to download the model and generate audio.
+
 ## Prerequisites and uv installation
 
 Install Git and [uv](https://docs.astral.sh/uv/getting-started/installation/).
