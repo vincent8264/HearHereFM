@@ -1,4 +1,4 @@
-"""Tests for alternating radio sections and model integration."""
+"""Tests for radio selection, history, and model integration."""
 
 import json
 from pathlib import Path
@@ -26,14 +26,19 @@ def model_calls(monkeypatch: pytest.MonkeyPatch) -> list[dict[str, object]]:
     class FakeResponses:
         def parse(self, **kwargs: object) -> SimpleNamespace:
             calls.append(kwargs)
-            result_type = kwargs["text_format"]
-            if result_type is llm.NarrationResult:
-                result = llm.NarrationResult(
-                    text="  A warm breeze follows the sunshine.  "
+            if json.loads(kwargs["input"])["current_state"] == "music":
+                result = llm.RadioDecision(
+                    mode="narration",
+                    text="  A warm breeze follows the sunshine.  ",
+                    song_title=None,
+                    artist=None,
                 )
             else:
-                result = llm.SongResult(
-                    song_title="  Here Comes the Sun  ", artist="  The Beatles  "
+                result = llm.RadioDecision(
+                    mode="music",
+                    text=None,
+                    song_title="  Here Comes the Sun  ",
+                    artist="  The Beatles  ",
                 )
             return SimpleNamespace(output_parsed=result)
 
@@ -67,13 +72,15 @@ def test_music_ending_generates_narration(model_calls: list[dict[str, object]]) 
     assert len(model_calls) == 1
     call = model_calls[0]
     assert call["model"] == "gpt-6-luna"
-    assert call["text_format"] is llm.NarrationResult
+    assert call["text_format"] is llm.RadioDecision
     assert call["store"] is False
     assert json.loads(call["input"]) == {
         "latitude": 37.7749,
         "longitude": -122.4194,
         "weather": "Sunny, 20 C",
         "time": "18:30",
+        "current_state": "music",
+        "played_history": [],
     }
 
 
@@ -97,8 +104,189 @@ def test_narration_ending_generates_song(model_calls: list[dict[str, object]]) -
         "artist": "The Beatles",
     }
     assert len(model_calls) == 1
-    assert model_calls[0]["text_format"] is llm.SongResult
+    assert model_calls[0]["text_format"] is llm.RadioDecision
     assert json.loads(model_calls[0]["input"])["time"] == "18:30"
+
+
+def test_model_can_choose_music_after_music(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        llm,
+        "_generate",
+        lambda *_args: llm.RadioDecision(
+            mode="music", text=None, song_title="September", artist="Earth, Wind & Fire"
+        ),
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/radio/next",
+            json={
+                "latitude": 37.7749,
+                "longitude": -122.4194,
+                "weather": "Sunny, 20 C",
+                "time": "18:30",
+                "current_state": "music",
+                "played_history": [
+                    {"mode": "music", "song_title": "First Song", "artist": "Artist"}
+                ],
+            },
+        )
+    assert response.status_code == 200
+    assert response.json() == {
+        "mode": "music",
+        "song_title": "September",
+        "artist": "Earth, Wind & Fire",
+    }
+
+
+def test_history_and_user_input_reach_model(
+    model_calls: list[dict[str, object]],
+) -> None:
+    history = [
+        {
+            "mode": "music",
+            "song_title": "First Song",
+            "artist": "Artist",
+            "spotify_uri": "spotify:track:6rqhFgbbKwnb9MLmUQDhG6",
+        },
+        {"mode": "narration", "text": "The park is quiet today."},
+    ]
+    with TestClient(app) as client:
+        response = client.post(
+            "/radio/next",
+            json={
+                "latitude": 37.7749,
+                "longitude": -122.4194,
+                "weather": "Sunny, 20 C",
+                "time": "18:30",
+                "current_state": "music",
+                "played_history": history,
+                "user_input": "  More detailed descriptions  ",
+            },
+        )
+    assert response.status_code == 200
+    context = json.loads(model_calls[0]["input"])
+    assert context["played_history"] == [
+        history[0],
+        {"mode": "narration", "text": "The park is quiet today."},
+    ]
+    assert context["user_input"] == "More detailed descriptions"
+    assert "Do not choose any song in played_history" in model_calls[0]["instructions"]
+
+
+def test_repeated_song_is_retried(monkeypatch: pytest.MonkeyPatch) -> None:
+    candidates = iter(
+        [
+            llm.RadioDecision(
+                mode="music",
+                text=None,
+                song_title="September!",
+                artist="EARTH, WIND & FIRE",
+            ),
+            llm.RadioDecision(
+                mode="music", text=None, song_title="Lovely Day", artist="Bill Withers"
+            ),
+        ]
+    )
+    instructions: list[str] = []
+
+    def generate(_request: object, prompt: str, _place: object) -> llm.RadioDecision:
+        instructions.append(prompt)
+        return next(candidates)
+
+    monkeypatch.setattr(llm, "_generate", generate)
+    with TestClient(app) as client:
+        response = client.post(
+            "/radio/next",
+            json={
+                "latitude": 37.7749,
+                "longitude": -122.4194,
+                "weather": "Sunny, 20 C",
+                "time": "18:30",
+                "current_state": "narration",
+                "played_history": [
+                    {
+                        "mode": "music",
+                        "song_title": "September",
+                        "artist": "Earth, Wind & Fire",
+                    },
+                    {"mode": "narration", "text": "A fresh introduction."},
+                ],
+            },
+        )
+    assert response.status_code == 200
+    assert response.json()["song_title"] == "Lovely Day"
+    assert len(instructions) == 2
+    assert "already played" in instructions[1]
+
+
+def test_three_songs_force_narration(monkeypatch: pytest.MonkeyPatch) -> None:
+    candidates = iter(
+        [
+            llm.RadioDecision(
+                mode="music", text=None, song_title="New Song", artist="Artist"
+            ),
+            llm.RadioDecision(
+                mode="narration",
+                text="A fresh observation.",
+                song_title=None,
+                artist=None,
+            ),
+        ]
+    )
+    monkeypatch.setattr(llm, "_generate", lambda *_args: next(candidates))
+    with TestClient(app) as client:
+        response = client.post(
+            "/radio/next",
+            json={
+                "latitude": 37.7749,
+                "longitude": -122.4194,
+                "weather": "Sunny, 20 C",
+                "time": "18:30",
+                "current_state": "music",
+                "played_history": [
+                    {"mode": "music", "song_title": f"Song {i}", "artist": "Artist"}
+                    for i in range(3)
+                ],
+            },
+        )
+    assert response.status_code == 200
+    assert response.json() == {"mode": "narration", "text": "A fresh observation."}
+
+
+def test_repeated_narration_twice_reports_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(
+        llm,
+        "_generate",
+        lambda *_args: llm.RadioDecision(
+            mode="narration",
+            text="The park is quiet today.",
+            song_title=None,
+            artist=None,
+        ),
+    )
+    with TestClient(app) as client:
+        response = client.post(
+            "/radio/next",
+            json={
+                "latitude": 37.7749,
+                "longitude": -122.4194,
+                "weather": "Sunny, 20 C",
+                "time": "18:30",
+                "current_state": "music",
+                "played_history": [
+                    {"mode": "narration", "text": "The park is quiet today."},
+                    {"mode": "music", "song_title": "A Song", "artist": "Artist"},
+                ],
+            },
+        )
+    assert response.status_code == 502
+    assert response.json() == {
+        "detail": "The model could not choose a non-repetitive action"
+    }
 
 
 @pytest.mark.parametrize("current_state", ["music", "narration"])
@@ -162,6 +350,11 @@ def test_place_lookup_failure_keeps_radio_available(
         ("weather", "  "),
         ("time", "25:61"),
         ("current_state", "paused"),
+        ("user_input", "   "),
+        ("user_input", "x" * 2001),
+        ("played_history", [{"mode": "music", "artist": "Artist"}]),
+        ("played_history", [{"mode": "narration", "text": " "}]),
+        ("played_history", [{"mode": "music", "song_title": "x", "artist": "y"}] * 11),
     ],
 )
 def test_radio_route_rejects_invalid_input(field: str, value: object) -> None:
@@ -249,7 +442,9 @@ def test_empty_model_result_reports_failure(
     monkeypatch.setattr(
         llm,
         "_generate",
-        lambda *_args: llm.SongResult(song_title="  ", artist="The Beatles"),
+        lambda *_args, **_kwargs: llm.RadioDecision(
+            mode="music", text=None, song_title="  ", artist="The Beatles"
+        ),
     )
 
     with TestClient(app) as client:

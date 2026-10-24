@@ -19,17 +19,19 @@ Default voice: `af_sarah`, American English, speed 1.0.
 
 ## Team integration contract
 
-### Pre-generate during music playback (recommended)
+### Pre-generate the next narration (recommended)
 
-1. While a song is playing, call `POST /radio/next` with `current_state: "music"`
-   and the location, weather, and local time from [the radio contract](contracts.md).
-   Send its narration `text` to `POST /tts/jobs` as `{"text": "..."}`.
+1. While a section is playing, call `POST /radio/next` with the current state,
+   recent played history, and context from [the radio contract](contracts.md).
+   If the response mode is `narration`, send its `text` to `POST /tts/jobs` as
+   `{"text": "..."}`. If it is `music`, resolve the song through Spotify instead.
 2. The API returns HTTP 202 immediately with `job_id`, `status: "queued"`,
    `status_url`, `audio_url: null`, and `error: null`.
 3. Poll `status_url` every 1–2 seconds. Status progresses through `queued`,
    `running`, then `ready` with a playable `audio_url`, or `failed` with `error`.
-4. Keep playing music until narration is ready. At the intended transition, pause
-   music, play the prepared narration, then resume music. Do not overlap audio.
+4. Keep the current section playing until narration is ready. At the intended
+   transition, stop or pause the current audio, then play the prepared narration.
+   Do not overlap audio. Add the narration to played history when it starts.
 
 Only queue the next needed narration so it remains relevant to the listener's
 location. The playback client owns timing and must ignore an outdated job if the

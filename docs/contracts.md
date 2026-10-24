@@ -7,9 +7,11 @@ further changes with the client, weather, Spotify, and TTS component owners.
 
 The client obtains the listener's location with permission. While the current
 section is playing, it calls `POST /radio/next` with coordinates, a weather
-description, the listener-local time, and the current section. The backend
-returns the opposite mode: music -> narration, narration -> music. Calling
-after a section ends is also supported, but adds generation latency.
+description, the listener-local time, the current section, recent played history,
+and optional listener input. The model selects music or narration for the next
+section. The backend rejects repeated content and forces narration after three
+consecutive songs. Calling after a section ends is also supported, but adds
+generation latency.
 
 Before generation, the backend looks for a named sight or museum through
 Geoapify Places API v2 within 500 metres of the listener. If found, its name, type,
@@ -18,10 +20,18 @@ failure falls back to weather, time, and coordinates alone. GPT-6 Luna writes
 the next narration or names the next song. For narration,
 the client sends the returned `text` to `POST /tts/jobs`, then polls the returned
 `status_url` every 1–2 seconds. When `status` is `ready`, `audio_url` points to
-the completed WAV. Keep music playing until the narration is prepared, then
-pause music before playing the audio. Never overlap the two playback sections.
+the completed WAV. Keep the current audio playing until the narration is prepared,
+then pause or stop it before playing the WAV. Never overlap playback sections.
 Request only one upcoming section; discard stale results if the location changes.
 See [TTS integration](tts.md) for status, errors, queue limits, and storage.
+
+### Optional user input
+
+The headless program can capture spoken preferences such as "Play more lively
+music" or "More detailed descriptions" and transcribe them to a string. Send it as
+`user_input` on each relevant request; omit it when empty. The model uses it to
+adjust song mood or narration detail, while the same factual and variety rules
+still apply.
 
 ## HTTP contract
 
@@ -33,29 +43,50 @@ See [TTS integration](tts.md) for status, errors, queue limits, and storage.
   "longitude": -122.4194,
   "weather": "Sunny, 20 C",
   "time": "18:30",
-  "current_state": "music"
+  "current_state": "music",
+  "played_history": [
+    {"mode": "music", "song_title": "Here Comes the Sun", "artist": "The Beatles", "spotify_uri": "spotify:track:6rqhFgbbKwnb9MLmUQDhG6"},
+    {"mode": "narration", "text": "The afternoon light makes this a lovely place to pause."},
+    {"mode": "music", "song_title": "Lovely Day", "artist": "Bill Withers"}
+  ],
+  "user_input": "Play more lively music and give more detailed descriptions"
 }
 ```
 
 Latitude must be between -90 and 90; longitude must be between -180 and 180.
 `weather` is a nonempty description of at most 500 characters. `current_state`
 is `music` or `narration` and means the section currently playing (or just ended).
-`time` is
-required and represents the listener's local clock time, typically in `HH:MM`
+`played_history` is optional, ordered oldest to newest, and contains up to ten
+sections that actually started playback. Include the current section once it
+starts. A music entry requires `song_title` and `artist` and may include its
+resolved `spotify_uri`; a narration entry requires its exact script in `text`.
+Send the most recent ten entries if the session is longer. `user_input` is
+optional listener guidance of at most 2,000 characters, for example, "Play more
+lively music" or "More detailed descriptions". Blank input is invalid; omit
+the field if the listener has not provided guidance.
+
+For headless voice input, use the string returned by `capture_text()` or the
+`text` field from `POST /voice/transcribe` as `user_input`. Local recording is
+capped at 60 seconds; STT and radio both accept up to 2,000 text characters.
+Retain the listener's latest guidance for subsequent relevant requests; the
+radio endpoint does not persist it. See [desktop voice setup](voice.md).
+
+`time` is required and represents the listener's local clock time, typically in `HH:MM`
 format; the backend does not infer it from coordinates. A success response
-when requesting the section following music is:
+when the model chooses narration is:
 
 ```json
 {"mode": "narration", "text": "The sunshine brings a gentle warmth to this stop..."}
 ```
 
-When requesting the section following narration, the response is:
+When the model chooses music, the response is:
 
 ```json
 {"mode": "music", "song_title": "Here Comes the Sun", "artist": "The Beatles"}
 ```
 
-The narration text is ready for a separate TTS component. The music response
+Either response is possible after either current state. The narration text is
+ready for a separate TTS component. The music response
 contains a suggestion, not a Spotify URI. The client sends it to
 `POST /spotify/resolve`:
 
@@ -73,9 +104,12 @@ The resolver searches Spotify with server-side app credentials and returns:
 search results to tracks available in that market. The resolver checks that
 both title and artist match; a remastered or mixed version can match. A URI
 does not start playback or guarantee the listener's account/device can play it.
-No matching track returns 404, Spotify failure returns 502, missing Spotify
-app credentials returns 503, and invalid input returns 422. If no match is
-found, the client should request another song or choose a fallback.
+If Spotify resolves to a URI already in recent history, the client should request
+another candidate or skip it; the radio backend only sees the model's title and
+artist when making its choice. No matching track returns 404, Spotify failure
+returns 502, missing Spotify app credentials returns 503, and invalid input
+returns 422. If no match is found, the client should request another song or
+choose a fallback.
 
 For `POST /radio/next`, invalid input returns HTTP 422. Missing
 `OPENAI_API_KEY` returns HTTP 503. Model or model-output failure returns HTTP 502.
@@ -84,10 +118,10 @@ For `POST /radio/next`, invalid input returns HTTP 422. Missing
 
 | Component | Responsibility | Status |
 | --- | --- | --- |
-| Client | Obtain location; request the next section during playback; pre-generate narration; call Spotify resolver; play sections separately | External to this repo |
+| Client | Obtain location; send played history and optional user input; request the next section during playback; pre-generate narration when selected; call Spotify resolver when selected; play sections separately | External to this repo |
 | Weather | Fetch current conditions via `GET /weather`; client formats the description for radio | Implemented |
-| Decision | Alternate modes after each section | Implemented |
-| LLM | Generate narration text or choose a song from location, weather, and local time | Implemented |
+| Decision | Let the model select a mode; reject repeated content and runs longer than three songs | Implemented |
+| LLM | Select a mode and generate narration or a song from context, history, and listener input | Implemented |
 | Spotify resolver | Match the chosen title and artist to a market-filtered Spotify track URI | Implemented |
 | Spotify playback | Use the URI to control playback | External to this repo |
 | TTS | Convert English narration to WAV with Kokoro; queue jobs and serve audio URLs | Implemented |
@@ -102,7 +136,11 @@ model generation. The client should credit both
 names, as required for Geoapify's free plan.
 
 The radio endpoint does not store playback session state: callers send the current
-section on each request. TTS job status is stored in memory and requires one
+section and recent played history on each request. Generated or queued content
+should enter history only when playback starts. Duplicate checks compare song
+title and artist or near-identical narration text, then allow one model retry.
+They cannot guarantee semantic novelty or detect alternate Spotify recordings.
+TTS job status is stored in memory and requires one
 server worker. Spotify playback and richer place-fact contracts still need
 team agreement.
 

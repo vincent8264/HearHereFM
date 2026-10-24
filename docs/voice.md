@@ -31,7 +31,7 @@ text: str = capture_text()
 ```
 
 `capture_text()` records a single utterance. It waits at most 10 seconds for speech,
-stops after about 1.2 seconds of trailing silence, and caps recording at 20 seconds.
+stops after about 1.2 seconds of trailing silence, and caps recording at 60 seconds.
 Energy detection starts/stops recording; Whisper's VAD also filters silence. It is
 not a semantic wake-word engine. Microphone/model failures raise exceptions and
 do not produce an input string.
@@ -48,7 +48,12 @@ The optional output file contains just the UTF-8 string and is replaced atomical
 only on success. A background consumer should consume a **new file replacement**,
 not repeatedly read a stale value. A failed capture leaves the previous file
 unchanged; use process exit status or watch successful replacements. No LLM
-consumer has been installed; the teammate wires it to their input handler.
+consumer has been installed. To connect it, put the recognized string into
+`user_input` in the existing `/radio/next` request alongside location, weather,
+local time, current playback state, and recent played history. Both STT and
+`user_input` accept up to 2,000 characters, so a valid transcript can be forwarded
+without truncating it. Retain the latest input for subsequent requests as needed;
+the radio endpoint does not remember preferences between calls.
 `--device` accepts an optional sounddevice input-device index.
 Recordings are processed in memory and not saved. Transcript files in `data/voice/`
 are ignored by Git and remain local until removed.

@@ -8,7 +8,7 @@ import numpy as np
 import soundfile as sf
 from numpy.typing import NDArray
 
-from app.voice.transcription import VoiceInputError, get_transcriber
+from app.voice.transcription import MAX_AUDIO_SECONDS, VoiceInputError, get_transcriber
 
 SAMPLE_RATE = 16000
 BLOCK_SAMPLES = 1600
@@ -24,7 +24,7 @@ def collect_utterance(
     threshold: float = 0.015,
     wait_seconds: float = 10.0,
     silence_seconds: float = 1.2,
-    max_seconds: float = 20.0,
+    max_seconds: float = MAX_AUDIO_SECONDS,
 ) -> NDArray[np.float32]:
     """Wait for speech energy, retain its onset, and stop after trailing silence."""
     if threshold <= 0 or min(wait_seconds, silence_seconds, max_seconds) <= 0:

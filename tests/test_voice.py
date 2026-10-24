@@ -1,5 +1,6 @@
 """Verify transcription and headless string handoff without microphone access."""
 
+import json
 from io import BytesIO
 from pathlib import Path
 from types import SimpleNamespace
@@ -12,6 +13,8 @@ import soundfile as sf
 from fastapi.testclient import TestClient
 
 from app.main import app
+from app.radio import llm
+from app.radio import service as radio_service
 from app.voice import __main__ as cli
 from app.voice import microphone
 from app.voice.transcription import (
@@ -44,6 +47,46 @@ def test_upload_returns_only_the_original_string(voice_client) -> None:
     assert response.status_code == 200
     assert response.json() == {"text": "Play upbeat music with less talking."}
     transcriber.transcribe.assert_called_once_with(b"recording")
+
+
+@pytest.mark.parametrize("length", [501, 2000])
+def test_long_voice_string_reaches_llm_without_truncation(
+    voice_client, monkeypatch: pytest.MonkeyPatch, length: int
+) -> None:
+    client, transcriber = voice_client
+    text = ("Please play upbeat music and keep narration short. " * 50)[
+        : length - 1
+    ] + "!"
+    transcriber.transcribe.return_value = text
+    fake_client = Mock()
+    fake_client.responses.parse.return_value = SimpleNamespace(
+        output_parsed=llm.RadioDecision(
+            mode="music", text=None, song_title="Lovely Day", artist="Bill Withers"
+        )
+    )
+    monkeypatch.setenv("OPENAI_API_KEY", "test-key")
+    monkeypatch.setattr(llm, "OpenAI", Mock(return_value=fake_client))
+    monkeypatch.setattr(radio_service, "find_nearby_place", lambda *_args: None)
+    transcript = client.post(
+        "/voice/transcribe", files={"audio": ("command.wav", b"recording")}
+    )
+    assert transcript.status_code == 200
+    response = client.post(
+        "/radio/next",
+        json={
+            "latitude": 32.7,
+            "longitude": -117.1,
+            "weather": "Sunny",
+            "time": "18:30",
+            "current_state": "music",
+            "played_history": [],
+            "user_input": transcript.json()["text"],
+        },
+    )
+    assert response.status_code == 200
+    context = json.loads(fake_client.responses.parse.call_args.kwargs["input"])
+    assert len(context["user_input"]) == length
+    assert context["user_input"] == text
 
 
 def test_oversized_upload_is_rejected_before_transcription(voice_client) -> None:
@@ -167,6 +210,32 @@ def test_capture_times_out_if_nobody_speaks() -> None:
 def test_capture_caps_continuous_sound() -> None:
     result = microphone.collect_utterance([block(0.1)] * 100, max_seconds=0.5)
     assert len(result) == 8000
+
+
+def test_default_microphone_limit_allows_and_caps_one_minute() -> None:
+    frames_read = 0
+
+    def frames():
+        nonlocal frames_read
+        for _ in range(610):
+            frames_read += 1
+            yield block(0.1)
+
+    result = microphone.collect_utterance(frames())
+    assert len(result) == 60 * microphone.SAMPLE_RATE
+    assert frames_read == 600
+
+
+def test_one_minute_transcript_is_not_truncated_to_llm_character_limit() -> None:
+    transcriber = Transcriber()
+    transcriber._model = Mock()
+    text = "Play upbeat songs and keep the narration brief. " * 15
+    assert 500 < len(text.strip()) < 2000
+    transcriber._model.transcribe.return_value = (
+        iter([SimpleNamespace(text=text)]),
+        None,
+    )
+    assert transcriber.transcribe(wav_bytes(60)) == text.strip()
 
 
 def test_capture_string_contract_passes_recording_to_whisper(

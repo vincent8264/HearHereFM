@@ -74,8 +74,11 @@ def test_radio_song_can_be_resolved_for_playback(
     monkeypatch.setattr(
         llm,
         "_generate",
-        lambda *_args: llm.SongResult(
-            song_title="Here Comes the Sun", artist="The Beatles"
+        lambda *_args, **_kwargs: llm.RadioDecision(
+            mode="music",
+            text=None,
+            song_title="Here Comes the Sun",
+            artist="The Beatles",
         ),
     )
     with TestClient(app) as client:
