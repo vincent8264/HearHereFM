@@ -10,6 +10,13 @@ import json
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import RedirectResponse
 
+from pydantic import BaseModel
+
+from app.music.spotify_playback import (
+    SpotifyPlayback,
+    SpotifyPlaybackError,
+)
+
 router = APIRouter(prefix="/spotify", tags=["Spotify"])
 
 CLIENT_ID = os.getenv("SPOTIFY_CLIENT_ID")
@@ -102,4 +109,111 @@ def spotify_status():
     return {
         "connected": bool(spotify_tokens.get("access_token")),
         "note": "Tokens are stored temporarily in server memory",
+    }
+
+
+class PlayRequest(BaseModel):
+    spotify_uri: str
+    device_id: str | None = None
+
+
+@router.post("/play")
+def spotify_play(request: PlayRequest):
+    # Access Token from the existing OAuth callback
+    access_token = spotify_tokens.get("access_token")
+
+    if not access_token:
+        raise HTTPException(
+            status_code=401,
+            detail="Spotify not connected. Visit /spotify/login first.",
+        )
+
+    # Use the existing Spotify playback adapter
+    player = SpotifyPlayback(access_token=access_token)
+
+    try:
+        result = player.play_track(
+            track_uri=request.spotify_uri,
+            device_id=request.device_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    except SpotifyPlaybackError as exc:
+        raise HTTPException(status_code=502, detail=str(exc)) from exc
+
+    return result
+
+
+@router.get("/devices")
+def spotify_devices():
+    import json
+    from urllib.request import Request, urlopen
+    from urllib.error import HTTPError
+
+    access_token = spotify_tokens.get("access_token")
+
+    if not access_token:
+        raise HTTPException(
+            status_code=401,
+            detail="Please login to Spotify first",
+        )
+
+    request = Request(
+        "https://api.spotify.com/v1/me/player/devices",
+        headers={
+            "Authorization": f"Bearer {access_token}"
+        },
+    )
+
+    try:
+        with urlopen(request, timeout=10) as response:
+            return json.load(response)
+    except HTTPError as exc:
+        raise HTTPException(
+            status_code=exc.code,
+            detail=f"Spotify API returned {exc.code}",
+        ) from exc
+
+@router.get("/playback-state")
+def get_playback_state():
+    from urllib.request import Request, urlopen
+    from urllib.error import HTTPError
+    import json
+
+    token = spotify_tokens.get("access_token")
+
+    if not token:
+        raise HTTPException(
+            status_code=401,
+            detail="Spotify not connected",
+        )
+
+    request = Request(
+        "https://api.spotify.com/v1/me/player",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    try:
+        with urlopen(request, timeout=10) as response:
+            if response.status == 204:
+                return {"active_device": False}
+
+            data = json.load(response)
+
+    except HTTPError as exc:
+        raise HTTPException(
+            status_code=exc.code,
+            detail=f"Spotify API error: {exc.code}",
+        ) from exc
+
+    return {
+        "is_playing": data.get("is_playing"),
+        "track_name": (
+            data.get("item") or {}
+        ).get("name"),
+        "track_uri": (
+            data.get("item") or {}
+        ).get("uri"),
+        "device": (data.get("device") or {}).get("name"),
+        "device_id": (data.get("device") or {}).get("id"),
     }
