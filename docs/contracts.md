@@ -55,7 +55,8 @@ still apply.
 
 Latitude must be between -90 and 90; longitude must be between -180 and 180.
 `weather` is a nonempty description of at most 500 characters. `current_state`
-is `music` or `narration` and means the section currently playing (or just ended).
+is `idle`, `music`, or `narration`. Use `idle` before the first playback section;
+otherwise send the section currently playing (or just ended).
 `played_history` is optional, ordered oldest to newest, and contains up to ten
 sections that actually started playback. Include the current section once it
 starts. A music entry requires `song_title` and `artist` and may include its
@@ -123,7 +124,8 @@ For `POST /radio/next`, invalid input returns HTTP 422. Missing
 | Decision | Let the model select a mode; reject repeated content and runs longer than three songs | Implemented |
 | LLM | Select a mode and generate narration or a song from context, history, and listener input | Implemented |
 | Spotify resolver | Match the chosen title and artist to a market-filtered Spotify track URI | Implemented |
-| Spotify playback | Use the URI to control playback | External to this repo |
+| Spotify playback | OAuth and Spotify Connect play/pause/state | Implemented; requires user authorization and a playback device |
+| Desktop controller | Voice-triggered capture; retain history; prepare and play sections without a frontend | Implemented; see [desktop setup](desktop.md) |
 | TTS | Convert English narration to WAV with Kokoro; queue jobs and serve audio URLs | Implemented |
 | Places | Find a nearby named sight or museum with Geoapify; detailed verified facts are future work | Basic lookup implemented |
 

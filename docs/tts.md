@@ -1,5 +1,9 @@
 # English narration TTS
 
+The [desktop controller](desktop.md) uses this service directly to pre-generate
+WAV files and plays them through the local output device, pausing Spotify first.
+The HTTP job interface below remains available to other callers.
+
 TTS accepts the narration text already written by the decision/narration component.
 It does not select places, write scripts, play audio, or modify `/radio/next`.
 

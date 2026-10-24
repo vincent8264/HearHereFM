@@ -1,9 +1,13 @@
 # Headless desktop speech input
 
+For the complete background application, OS activation phrases, and Spotify
+playback, follow [desktop radio setup](desktop.md). The raw string interfaces
+below remain available independently.
+
 Our component only records speech and returns the recognized **string**. It does
 not interpret commands, call an LLM, change prompts, or control radio scheduling.
 The LLM owner decides how to use a string such as `Play upbeat music today, with
-less talking.` All existing `app/radio/` interfaces are unchanged.
+less talking.` The separate desktop controller forwards it through `user_input`.
 
 ## Setup
 
@@ -47,8 +51,9 @@ uv run --locked python -m app.voice --output data/voice/latest.txt
 The optional output file contains just the UTF-8 string and is replaced atomically
 only on success. A background consumer should consume a **new file replacement**,
 not repeatedly read a stale value. A failed capture leaves the previous file
-unchanged; use process exit status or watch successful replacements. No LLM
-consumer has been installed. To connect it, put the recognized string into
+unchanged; use process exit status or watch successful replacements. The integrated
+desktop controller calls `capture_text()` directly and does not watch this file.
+For a custom consumer, put the recognized string into
 `user_input` in the existing `/radio/next` request alongside location, weather,
 local time, current playback state, and recent played history. Both STT and
 `user_input` accept up to 2,000 characters, so a valid transcript can be forwarded
@@ -66,34 +71,32 @@ The proposed flow is **Siri trigger -> launch -> speak request -> string**.
 
 One-time setup on the demo Mac:
 
-1. Create a Shortcut named `Start Radio` (or a chosen phrase in Siri's language).
-2. Add a spoken cue such as `Tell me what you want to hear`, then a brief wait so
-   Siri's own speech is not recorded as the user's request.
-3. Add **Run Shell Script**, using the absolute project path:
+1. Create a Shortcut named `Radio take my request`.
+2. Add **Run Shell Script**, using the absolute project path:
 
    ```sh
    /bin/sh /Users/skylining/compiled16/scripts/start_voice_macos.sh
    ```
 
-4. If required, enable **Allow Running Scripts** in Shortcuts settings and grant
+3. If required, enable **Allow Running Scripts** in Shortcuts settings and grant
    microphone access when macOS requests it. See
    [Apple's scripting settings](https://support.apple.com/guide/shortcuts-mac/advanced-shortcuts-settings-apdfeb05586f/mac).
-5. Test the Shortcut manually once, then invoke Siri and say `Start Radio`. After
-   the cue, speak the listening request. The script writes `data/voice/latest.txt`
-   and returns the same text as stdout, without opening a product window.
+4. Test the Shortcut manually once, then invoke Siri and say `Radio take my request`.
+   The script activates the background controller. Wait for its own spoken cue,
+   then give the request. It sends the string into the existing radio input.
 
 This is a concrete launch recipe, not a verified Siri/microphone installation.
 Siri availability, microphone ownership during handoff, permissions, and timing
 must be tested on the actual Mac. The process uses the project's Python directly;
-Shortcuts does not need to find `uv` in its restricted PATH. It exits after one
-utterance; Siri remains responsible for future activation.
+Shortcuts does not need to find `uv` in its restricted PATH. The launcher exits;
+the daemon stays resident with its microphone closed until the next activation.
 
 ## Windows 11: Voice Access launches a hidden Python process
 
 Microsoft documents custom voice commands that open files or applications:
 [Voice Access shortcuts](https://support.microsoft.com/en-gb/topic/use-voice-to-create-voice-access-shortcuts-3f03bdb9-a9ee-47a0-81d6-13c1c8ba2a08).
 The custom-shortcut feature is documented for English language variants; use an
-English trigger such as `Start Radio` for the demo. This recipe targets Windows 11.
+English trigger such as `Radio take my request`. This recipe targets Windows 11.
 
 One-time setup on Windows:
 
@@ -103,13 +106,13 @@ One-time setup on Windows:
    .\scripts\create_voice_shortcut_windows.ps1
    ```
 
-2. The script creates ignored `data\voice\Radio.lnk`, targeting the project's
-   `pythonw.exe -m app.voice --output ...`. `pythonw.exe` has no console window.
+2. The script creates ignored start/stop `.lnk` files in `data\voice`, targeting
+   `pythonw.exe -m app.desktop activate` or `stop`. No console is shown.
    It does not install an autostart service or change system settings.
-3. Enable Windows Voice Access. Create a custom voice shortcut called `Start Radio`
-   whose **open file/application** action opens the generated `Radio.lnk`.
+3. Enable Windows Voice Access. Create custom voice shortcuts named
+   `Radio take my request` and `Radio stop playback`, opening the matching `.lnk`.
 4. Say the trigger, allow a brief handoff, then speak the listening request.
-   Successful transcription replaces `data\voice\latest.txt` for the LLM owner.
+   The controller transcribes it, supplies `user_input`, and manages playback.
 
 Windows activation has not been executed on this Mac. Voice Access handoff,
 microphone permissions, Python shortcut launching, and any local PowerShell
@@ -137,4 +140,5 @@ activation, and our process records one subsequent request. This does not yet me
 a single continuous phrase such as `Hey Siri, Start Radio and play upbeat music`
 is passed through intact: arbitrary Siri/Voice Access trailing speech is not
 automatically forwarded. Use two separate utterances for the first demo.
-The LLM and playback pipeline remain owned and integrated by the teammate.
+The integrated controller now wires the LLM and playback pipeline as described
+in [desktop radio setup](desktop.md).

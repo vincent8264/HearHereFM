@@ -11,6 +11,7 @@ htmlcov/
 data/tts/
 data/stt/
 data/voice/
+data/desktop/
 
 # Local configuration and secrets
 .env

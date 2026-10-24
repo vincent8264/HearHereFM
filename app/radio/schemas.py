@@ -43,7 +43,7 @@ class RadioRequest(BaseModel):
     longitude: float = Field(ge=-180, le=180)
     weather: WeatherDescription
     time: TimeOfDay
-    current_state: Literal["music", "narration"]
+    current_state: Literal["idle", "music", "narration"]
     played_history: list[PlayedSection] = Field(default_factory=list, max_length=10)
     user_input: UserInput | None = None
 

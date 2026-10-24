@@ -1,5 +1,10 @@
 # Hackathon starter
 
+The integrated background application is started with
+`uv run --locked python -m app.desktop activate`. Configure the voice triggers and
+Spotify authorization using [desktop radio setup](docs/desktop.md). Microphone
+capture happens only after explicit activation and the spoken prompt.
+
 A small Python 3.12 and FastAPI repository for a team hackathon. It has a
 health endpoint, tests, a smoke test, Ruff checks, and cross-platform CI.
 `POST /radio/next` uses GPT-6 Luna to choose music or narration and generate its

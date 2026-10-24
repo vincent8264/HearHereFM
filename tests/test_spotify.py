@@ -175,3 +175,22 @@ def test_invalid_request_is_rejected(body: dict[str, str]) -> None:
     with TestClient(app) as client:
         response = client.post("/spotify/resolve", json=body)
     assert response.status_code == 422
+
+
+def test_authorized_user_can_search_without_client_secret(
+    spotify_responses: tuple[Mock, Mock],
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    post, get = spotify_responses
+    monkeypatch.delenv("SPOTIFY_CLIENT_ID")
+    monkeypatch.delenv("SPOTIFY_CLIENT_SECRET")
+    monkeypatch.setattr(service, "ENV_FILE", tmp_path / "absent.env")
+    assert (
+        service.resolve_song(
+            "Here Comes the Sun", "The Beatles", "US", access_token="user-token"
+        )
+        == URI
+    )
+    post.assert_not_called()
+    assert get.call_args.kwargs["headers"] == {"Authorization": "Bearer user-token"}

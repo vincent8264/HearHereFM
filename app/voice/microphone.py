@@ -3,6 +3,7 @@
 from collections import deque
 from collections.abc import Iterable
 from io import BytesIO
+from threading import Event
 
 import numpy as np
 import soundfile as sf
@@ -25,6 +26,7 @@ def collect_utterance(
     wait_seconds: float = 10.0,
     silence_seconds: float = 1.2,
     max_seconds: float = MAX_AUDIO_SECONDS,
+    cancel_event: Event | None = None,
 ) -> NDArray[np.float32]:
     """Wait for speech energy, retain its onset, and stop after trailing silence."""
     if threshold <= 0 or min(wait_seconds, silence_seconds, max_seconds) <= 0:
@@ -33,6 +35,8 @@ def collect_utterance(
     frames: list[NDArray[np.float32]] = []
     waited = captured = quiet = 0
     for block in blocks:
+        if cancel_event is not None and cancel_event.is_set():
+            raise VoiceInputError("Recording cancelled.")
         samples = np.asarray(block, dtype=np.float32).reshape(-1)
         if samples.size == 0:
             continue
@@ -59,8 +63,12 @@ def collect_utterance(
     return np.concatenate(frames)[: int(max_seconds * SAMPLE_RATE)]
 
 
-def record_utterance(device: int | None = None) -> bytes:
+def record_utterance(
+    device: int | None = None, *, cancel_event: Event | None = None
+) -> bytes:
     """Open the microphone only for this request and return an in-memory WAV."""
+    if cancel_event is not None and cancel_event.is_set():
+        raise VoiceInputError("Recording cancelled.")
     try:
         import sounddevice as sd
 
@@ -81,7 +89,7 @@ def record_utterance(device: int | None = None) -> bytes:
                         )
                     yield block
 
-            samples = collect_utterance(blocks())
+            samples = collect_utterance(blocks(), cancel_event=cancel_event)
     except (VoiceInputError, MicrophoneError):
         raise
     except Exception as exc:
@@ -93,6 +101,11 @@ def record_utterance(device: int | None = None) -> bytes:
     return output.getvalue()
 
 
-def capture_text(device: int | None = None) -> str:
+def capture_text(
+    device: int | None = None, *, cancel_event: Event | None = None
+) -> str:
     """The teammate-facing contract: record one utterance and return a string."""
-    return get_transcriber().transcribe(record_utterance(device))
+    recording = record_utterance(device, cancel_event=cancel_event)
+    if cancel_event is not None and cancel_event.is_set():
+        raise VoiceInputError("Recording cancelled.")
+    return get_transcriber().transcribe(recording)

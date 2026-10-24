@@ -62,29 +62,32 @@ def _matches(track: object, title: str, artist: str) -> bool:
     return title_matches and artist_matches
 
 
-def resolve_song(title: str, artist: str, market: str) -> str:
+def resolve_song(
+    title: str, artist: str, market: str, *, access_token: str | None = None
+) -> str:
     """Find the requested recording in a market and return its track URI."""
     env = dotenv_values(ENV_FILE, interpolate=False)
     client_id = os.getenv("SPOTIFY_CLIENT_ID") or env.get("SPOTIFY_CLIENT_ID")
     client_secret = os.getenv("SPOTIFY_CLIENT_SECRET") or env.get(
         "SPOTIFY_CLIENT_SECRET"
     )
-    if not client_id or not client_secret:
+    if not access_token and (not client_id or not client_secret):
         raise SpotifyConfigurationError("Spotify app credentials are not configured")
 
     search_title = title.replace('"', "")
     search_artist = artist.replace('"', "")
     try:
-        token_response = requests.post(
-            TOKEN_URL,
-            auth=(client_id, client_secret),
-            data={"grant_type": "client_credentials"},
-            timeout=10,
-        )
-        token_response.raise_for_status()
-        access_token = token_response.json()["access_token"]
-        if not isinstance(access_token, str) or not access_token:
-            raise ValueError("Missing Spotify access token")
+        if access_token is None:
+            token_response = requests.post(
+                TOKEN_URL,
+                auth=(client_id, client_secret),
+                data={"grant_type": "client_credentials"},
+                timeout=10,
+            )
+            token_response.raise_for_status()
+            access_token = token_response.json()["access_token"]
+            if not isinstance(access_token, str) or not access_token:
+                raise ValueError("Missing Spotify access token")
 
         search_response = requests.get(
             SEARCH_URL,

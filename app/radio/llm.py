@@ -18,6 +18,7 @@ ENV_FILE = Path(__file__).resolve().parents[2] / ".env"
 RADIO_INSTRUCTIONS = (
     "You are programming a personal radio stream. Choose whether the next section "
     "is music or narration, then provide its content in the structured response. "
+    "When current_state is idle, start with music unless the listener asks for narration. "
     "Vary the rhythm; consecutive songs are fine, but avoid consecutive narration "
     "unless there is a clear reason. After three consecutive songs, choose narration. "
     "Do not choose any song in played_history. Do not repeat narration wording "

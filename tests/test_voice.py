@@ -247,7 +247,7 @@ def test_capture_string_contract_passes_recording_to_whisper(
     monkeypatch.setattr(microphone, "record_utterance", record)
     monkeypatch.setattr(microphone, "get_transcriber", lambda: transcriber)
     assert microphone.capture_text(device=2) == "廣播少一點。"
-    record.assert_called_once_with(2)
+    record.assert_called_once_with(2, cancel_event=None)
     transcriber.transcribe.assert_called_once_with(b"wave")
 
 
