@@ -1,8 +1,11 @@
 # Hackathon starter
 
-A small Python 3.12 and FastAPI repository for a team hackathon. It has one
+A small Python 3.12 and FastAPI repository for a team hackathon. It has a
 health endpoint, tests, a smoke test, Ruff checks, and cross-platform CI.
-Add project features in focused modules as the team agrees on interfaces.
+The personal radio route is scaffolded at `POST /radio/next`; it currently
+returns HTTP 501 for valid coordinates while weather, places, Spotify, LLM,
+and TTS integrations remain TODOs. See [`docs/contracts.md`](docs/contracts.md)
+for the proposed request and response shapes.
 
 ## Prerequisites and uv installation
 

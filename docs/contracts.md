@@ -1,47 +1,47 @@
 # Team API contracts
 
-Agree on API contracts before teammates implement separate components. Keep this
-document small and update it together when an interface changes.
+This is the initial contract for the personal radio prototype. Review it with
+component owners before building integrations that depend on it.
 
-## System overview
+## Flow
 
-Describe the proposed components and how data moves between them. The starter
-currently exposes only `GET /health`.
+The client obtains the listener's location with permission and calls
+`POST /radio/next`. The backend will fetch weather and nearby place facts,
+choose one mode, then return one action. Music and narration are separate
+playback sections; their audio must not overlap.
 
-## Component ownership
+## HTTP contract
 
-| Component | Owner | Responsibility |
-| --- | --- | --- |
-| Example component | TBD | Define when the team divides work. |
-
-## Input event schema
-
-Define accepted event names, required fields, types, and example values.
-
-**Example JSON event (illustrative only; no endpoint consumes it yet):**
+`POST /radio/next` accepts JSON coordinates:
 
 ```json
-{
-  "event_type": "example.created",
-  "event_id": "example-123",
-  "payload": {
-    "message": "sample input"
-  }
-}
+{"latitude": 37.7749, "longitude": -122.4194}
 ```
 
-## Output/action schema
+Latitude must be between -90 and 90; longitude must be between -180 and 180.
+The intended success response is one of:
 
-Define result fields and any actions produced by a component.
+```json
+{"mode": "music", "spotify_uri": "spotify:track:example"}
+```
 
-## Error handling
+```json
+{"mode": "narration", "place_name": "Example Place", "audio_url": "https://example.com/narration"}
+```
 
-Agree on error shapes, retry behavior, and ownership of failures.
+The route currently returns HTTP 501 for valid input until integrations are
+implemented. Invalid input returns HTTP 422 through FastAPI validation.
 
-## Integration assumptions
+## Component boundaries and TODOs
 
-Record assumptions about timing, ordering, configuration, and external services.
+| Component | Responsibility | Status |
+| --- | --- | --- |
+| Client | Obtain location; present music or narration as separate sections | TODO |
+| Weather | Fetch current conditions for coordinates | TODO |
+| Places | Find nearby landmarks and factual source material | TODO |
+| Decision | Choose one mode from weather, place facts, and user context | TODO |
+| Spotify | Authenticate the listener, choose a track, and control playback | TODO |
+| Narration | Generate a factual script and TTS audio | TODO |
 
-## Shared interfaces
-
-List agreed routes, function signatures, or event names once the team chooses them.
+External providers, credentials, error responses, session behavior, and
+component owners are still to be agreed by the team.
