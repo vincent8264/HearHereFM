@@ -216,3 +216,25 @@ def test_resolve_route_uses_connected_user_token(
     assert response.status_code == 200
     post.assert_not_called()
     assert get.call_args.kwargs["headers"] == {"Authorization": "Bearer user-token"}
+
+
+def test_catalog_artist_ampersand_matches_spoken_and(spotify_responses):
+    _, get = spotify_responses
+    track = get.return_value.json.return_value["tracks"]["items"][0]
+    track["name"] = "Walking on Sunshine"
+    track["artists"] = [{"name": "Katrina & The Waves"}]
+    assert (
+        service.resolve_song("Walking on Sunshine", "Katrina and the Waves", "US")
+        == URI
+    )
+
+
+def test_title_search_fallback_still_checks_artist(spotify_responses):
+    _, get = spotify_responses
+    matched = get.return_value
+    empty = Mock()
+    empty.json.return_value = {"tracks": {"items": []}}
+    get.side_effect = [empty, matched]
+    assert service.resolve_song("Here Comes the Sun", "The Beatles", "US") == URI
+    assert get.call_count == 2
+    assert get.call_args.kwargs["params"]["q"] == 'track:"Here Comes the Sun"'

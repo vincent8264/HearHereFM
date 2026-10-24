@@ -29,7 +29,9 @@ class SpotifyNoMatchError(Exception):
 def _normalize(value: str) -> str:
     ascii_text = "".join(
         char
-        for char in unicodedata.normalize("NFKD", value.casefold())
+        for char in unicodedata.normalize(
+            "NFKD", value.casefold().replace("&", " and ")
+        )
         if not unicodedata.combining(char)
     )
     return " ".join(re.findall(r"\w+", ascii_text))
@@ -89,25 +91,25 @@ def resolve_song(
             if not isinstance(access_token, str) or not access_token:
                 raise ValueError("Missing Spotify access token")
 
-        search_response = requests.get(
-            SEARCH_URL,
-            headers={"Authorization": f"Bearer {access_token}"},
-            params={
-                "q": f'track:"{search_title}" artist:"{search_artist}"',
-                "type": "track",
-                "limit": 10,
-                "market": market,
-            },
-            timeout=10,
+        queries = (
+            f'track:"{search_title}" artist:"{search_artist}"',
+            f'track:"{search_title}"',
         )
-        search_response.raise_for_status()
-        tracks = search_response.json()["tracks"]["items"]
-        if not isinstance(tracks, list):
-            raise TypeError("Invalid Spotify search results")
+        for query in queries:
+            search_response = requests.get(
+                SEARCH_URL,
+                headers={"Authorization": f"Bearer {access_token}"},
+                params={"q": query, "type": "track", "limit": 10, "market": market},
+                timeout=10,
+            )
+            search_response.raise_for_status()
+            tracks = search_response.json()["tracks"]["items"]
+            if not isinstance(tracks, list):
+                raise TypeError("Invalid Spotify search results")
+            for track in tracks:
+                if _matches(track, title, artist):
+                    return track["uri"]
     except (requests.RequestException, ValueError, KeyError, TypeError) as exc:
         raise SpotifyLookupError("Could not search Spotify") from exc
 
-    for track in tracks:
-        if _matches(track, title, artist):
-            return track["uri"]
     raise SpotifyNoMatchError("No matching Spotify track was found")

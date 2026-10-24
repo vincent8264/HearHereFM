@@ -127,6 +127,7 @@ class RadioController:
             self.services.ensure_ready()
             self._run(revision, cancel)
         except Exception as exc:  # noqa: BLE001 -- A worker failure must become a visible terminal state.
+            logger.warning("Radio request failed (%s).", type(exc).__name__)
             with self._lock:
                 if revision == self._revision and not cancel.is_set():
                     self._error = (
