@@ -164,8 +164,29 @@ failures or malformed responses return 502. The client can format a `weather`
 description such as `68 F, no rain` and extract `18:30` from the returned local
 `time` for `/radio/next`. The radio endpoint does not fetch weather automatically.
 
+`GET /location` serves a minimal browser client that requests device location
+permission on load. Its selector also offers four fixed demo locations that
+do not require device permission:
+
+| Preset | Representative point | Latitude | Longitude |
+| --- | --- | ---: | ---: |
+| Hollywood Boulevard | [Hollywood & Vine](https://commons.wikimedia.org/wiki/Category:Hollywood_and_Vine) | 34.10164 | -118.32667 |
+| Cairo Egyptian Museum | [Museum at Tahrir Square](https://egypter.com/en/museums/egyptian-museum/) | 30.04785 | 31.23360 |
+| Jeju | [Jeju City](https://ungegn.un.org/dashboard/cities/details?id=2614) | 33.509722 | 126.521944 |
+| Rio de Janeiro | [City coordinates](https://ungegn.un.org/dashboard/cities/details?id=989) | -22.903 | -43.208 |
+
+The page sends the selected coordinates to `/weather` and can request a radio
+preview with that location, the weather description, and the weather provider's
+local time. Changing the selection discards an outdated preview. The preview
+uses `current_state="music"`
+and empty history because it does not control playback. A playback client must
+send its real state and history with the same location context. Browser location
+may use GPS, Wi-Fi, or cellular positioning. Geolocation requires HTTPS except
+for a browser using localhost on its own device; a phone connecting to a server
+on the LAN therefore needs HTTPS. The client requests high accuracy and displays
+the reported accuracy, but the browser does not guarantee use of GPS hardware.
+
 The Python helper `app.location_api.get_location.get_my_location()` estimates
 the backend server's location through ipapi.co. It is not exposed as an HTTP
-route and does not locate the listener's phone. The client should obtain the
-listener's coordinates with permission and send them to the weather/radio APIs.
-These provider calls require network access; neither helper sends an API key.
+route and is not used by the browser client or weather/radio endpoints. Neither
+the IP helper nor the weather provider request sends an API key.

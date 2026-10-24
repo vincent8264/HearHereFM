@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from starlette.concurrency import run_in_threadpool
 
+from app.location_api.router import router as location_router
 from app.radio.router import router as radio_router
 from app.spotify.router import router as spotify_router
 from app.tts.jobs import SpeechJobs
@@ -23,6 +24,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Hackathon Starter", version="0.1.0", lifespan=lifespan)
+app.include_router(location_router)
 app.include_router(radio_router)
 app.include_router(spotify_router)
 app.include_router(tts_router)
