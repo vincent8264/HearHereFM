@@ -9,6 +9,7 @@ dependencies = [
     "kokoro-onnx>=0.6.1",
     "openai>=3.37.0",
     "python-dotenv>=1.2.4",
+    "requests>=2.34.2",
     "soundfile>=0.14.0",
     "uvicorn>=0.54.0",
 ]

@@ -61,7 +61,7 @@ model-output failure returns HTTP 502.
 | Component | Responsibility | Status |
 | --- | --- | --- |
 | Client | Obtain location; request the next section during playback; pre-generate narration; play sections separately | TODO |
-| Weather | Supply a current weather description for coordinates | TODO |
+| Weather | Fetch current conditions via `GET /weather`; client formats the description for radio | Implemented |
 | Decision | Alternate modes after each section | Implemented |
 | LLM | Generate narration text or choose a song from location, weather, and local time | Implemented |
 | Spotify | Resolve the chosen title and artist to a playable track, then control playback | TODO |
@@ -72,5 +72,31 @@ Spotify track search is a future option for resolving model-chosen songs. Until
 then, the music response is a suggestion, not a playable Spotify URI. The
 radio endpoint does not store playback session state: callers send the current
 section on each request. TTS job status is stored in memory and requires one
-server worker. Spotify, weather provider, and richer place-fact contracts still
+server worker. Spotify and richer place-fact contracts still
 need team agreement.
+
+## Weather and location
+
+`GET /weather?latitude=32.7157&longitude=-117.1611` returns current conditions
+from Open-Meteo:
+
+```json
+{
+  "time": "2026-10-24T18:30",
+  "temperature_f": 68.0,
+  "precipitation_in": 0.0,
+  "rain_in": 0.0,
+  "showers_in": 0.0
+}
+```
+
+Coordinates are validated with the same ranges as the radio endpoint. Provider
+failures or malformed responses return 502. The client can format a `weather`
+description such as `68 F, no rain` and extract `18:30` from the returned local
+`time` for `/radio/next`. The radio endpoint does not fetch weather automatically.
+
+The Python helper `app.location_api.get_location.get_my_location()` estimates
+the backend server's location through ipapi.co. It is not exposed as an HTTP
+route and does not locate the listener's phone. The client should obtain the
+listener's coordinates with permission and send them to the weather/radio APIs.
+These provider calls require network access; neither helper sends an API key.

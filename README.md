@@ -4,8 +4,9 @@ A small Python 3.12 and FastAPI repository for a team hackathon. It has a
 health endpoint, tests, a smoke test, Ruff checks, and cross-platform CI.
 `POST /radio/next` alternates music and narration based on the section that
 currently playing (or just ended). GPT-6 Luna generates narration text or chooses
-a song using the supplied location, weather, and local time. Spotify playback,
-weather fetching, and local place facts remain integration work. See
+a song using the supplied location, weather, and local time. `GET /weather`
+fetches current conditions for supplied coordinates. Spotify playback and local
+place facts remain integration work. See
 [`docs/contracts.md`](docs/contracts.md) for the request and response shapes.
 
 Local English TTS uses Kokoro on CPU. Submit `POST /tts/jobs` during music playback
