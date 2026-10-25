@@ -32,7 +32,7 @@ def activate(controller: Controller) -> dict:
     try:
         return controller.activate()
     except DesktopBusyError as exc:
-        raise HTTPException(409, str(exc)) from exc
+        raise HTTPException(503, str(exc), headers={"Retry-After": "1"}) from exc
 
 
 class StartRequest(BaseModel):
@@ -48,7 +48,7 @@ def start(controller: Controller, body: StartRequest | None = None) -> dict:
     try:
         return controller.start() if text is None else controller.activate(text)
     except DesktopBusyError as exc:
-        raise HTTPException(409, str(exc)) from exc
+        raise HTTPException(503, str(exc), headers={"Retry-After": "1"}) from exc
 
 
 @router.post("/stop", status_code=202)

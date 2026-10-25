@@ -65,6 +65,17 @@ location, using ipapi.co with [ipwho.is](https://ipwhois.io/documentation) as a
 backup when the first provider fails. Weather is refreshed every five minutes. Geoapify place context remains
 optional, as in the radio API. Real keys and generated state remain ignored by Git.
 
+For the Jeju City demo, use the existing Jeju preset coordinates in local `.env`:
+
+```dotenv
+RADIO_LATITUDE=33.509722
+RADIO_LONGITUDE=126.521944
+```
+
+The desktop controller then skips IP geolocation and fetches weather/local time
+for Jeju. Restart the daemon after changing demo coordinates to clear cached
+location, weather, and history; reconnect Spotify afterward. `.env` stays local.
+
 ## Connect Spotify once per daemon lifetime
 
 Register the exact redirect URI in the Spotify developer application. Open
@@ -153,8 +164,16 @@ At track end, Spotify is paused before local narration. Local WAV playback is
 interruptible. The three-consecutive-songs rule is unchanged. If preparation takes
 longer than the current section, there can be a gap rather than overlapping audio.
 External Spotify pause/track changes stop the session instead of fighting the user.
-Failures stop automated generation, retain an inspectable error, and attempt one
-generic spoken notice. There is no unbounded provider retry loop.
+If a selected song has no catalog match, the controller asks for one alternative
+without changing the listener guidance. Other failures, or two unavailable song
+selections, stop automated generation, retain an inspectable error, and attempt
+one generic spoken notice. There is no unbounded provider retry loop.
+
+Repeated start commands reuse the pending/default playback session, including
+while it is preparing or already playing. A stop followed by start creates a new
+session. Duplicate capture triggers during a pending capture reuse that capture;
+a different request replaces the old operation after cancellation. These normal
+repeats return 202. A closing controller returns 503 with Retry-After instead.
 
 Activation updates invalidate pending content from the old request. Already-running
 provider calls may finish, but their results cannot start playback. Stop cancels

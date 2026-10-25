@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class DesktopBusyError(RuntimeError):
-    """An activation is already pending or capturing a command."""
+    """The controller is closing and cannot accept another command."""
 
 
 class RadioController:
@@ -27,6 +27,7 @@ class RadioController:
         self._cancel = Event()
         self._revision = 0
         self._capture_pending = False
+        self._request_key: tuple[bool, str | None] | None = None
         self._phase = "idle"
         self._error: str | None = None
         self._history: list[PlayedSection] = []
@@ -54,13 +55,19 @@ class RadioController:
         with self._lock:
             if self._closed:
                 raise DesktopBusyError("Radio is shutting down.")
-            if self._capture_pending:
-                raise DesktopBusyError("A voice command is already being captured.")
+            key = (capture, text)
+            if self._request_key == key and (
+                self._capture_pending
+                or (not capture and self._phase in {"activation_pending", "preparing"})
+                or (key == (False, None) and self._phase in {"music", "narration"})
+            ):
+                return self.status()
             self._cancel.set()
             self._cancel = Event()
             self._revision += 1
             revision = self._revision
             self._capture_pending = True
+            self._request_key = key
             self._phase = "activation_pending"
             self._error = None
             self._session.submit(self._activate, revision, self._cancel, text, capture)
@@ -73,6 +80,8 @@ class RadioController:
             self._cancel.set()
             self._revision += 1
             self._capture_pending = False
+            self._request_key = None
+            self._error = None
             self._phase = "stopping"
             self._session.submit(self._settle_stop, self._revision)
             return self.status()

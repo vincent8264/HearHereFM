@@ -222,3 +222,85 @@ def test_pause_controls_only_web_player(monkeypatch, device, paused) -> None:
     monkeypatch.setattr(integrations, "get_player", lambda: player)
     DesktopServices().pause()
     assert player.pause.called is paused
+
+
+def test_demo_coordinates_override_ip_location(monkeypatch) -> None:
+    location = Mock(side_effect=AssertionError("Demo must not use IP location"))
+    weather = Mock(
+        return_value={
+            "temperature_f": 66,
+            "rain_in": 0,
+            "precipitation_in": 0,
+            "time": "2026-10-25T10:30",
+        }
+    )
+    monkeypatch.setattr(integrations, "get_my_location", location)
+    monkeypatch.setattr(integrations, "get_weather", weather)
+    monkeypatch.setattr(
+        integrations,
+        "dotenv_values",
+        lambda *args, **kwargs: {
+            "RADIO_LATITUDE": "33.509722",
+            "RADIO_LONGITUDE": "126.521944",
+        },
+    )
+    monkeypatch.delenv("RADIO_LATITUDE", raising=False)
+    monkeypatch.delenv("RADIO_LONGITUDE", raising=False)
+    context = DesktopServices().context()
+    assert (context["latitude"], context["longitude"]) == (33.509722, 126.521944)
+    assert context["time"] == "10:30"
+    location.assert_not_called()
+    weather.assert_called_once_with(33.509722, 126.521944)
+
+
+def test_unavailable_song_gets_one_alternative_without_changing_guidance(
+    monkeypatch,
+) -> None:
+    request = RadioRequest(
+        latitude=33.509722,
+        longitude=126.521944,
+        weather="Sunny",
+        time="10:00",
+        current_state="idle",
+    )
+    choose = Mock(
+        side_effect=[
+            MusicAction(song_title="Unavailable", artist="Artist"),
+            MusicAction(song_title="Spring Day", artist="BTS"),
+        ]
+    )
+    lookup = Mock(
+        side_effect=[
+            integrations.SpotifyNoMatchError("No match"),
+            "spotify:track:2j1fFjWHCI9KJSwcuYAOyF",
+        ]
+    )
+    monkeypatch.setattr(integrations, "next_action", choose)
+    monkeypatch.setattr(integrations, "resolve_song", lookup)
+    monkeypatch.setattr(integrations, "get_player", lambda: Mock(access_token="test"))
+    section = DesktopServices().prepare(request)
+    assert section.action.song_title == "Spring Day"
+    assert section.uri == "spotify:track:2j1fFjWHCI9KJSwcuYAOyF"
+    assert "Unavailable" in choose.call_args.kwargs["retry_reason"]
+    assert choose.call_args.args[0] is request
+    assert request.user_input is None
+    assert choose.call_count == lookup.call_count == 2
+
+
+def test_catalog_retry_is_bounded_and_returns_actionable_error(monkeypatch) -> None:
+    choose = Mock(return_value=MusicAction(song_title="Unavailable", artist="Artist"))
+    lookup = Mock(side_effect=integrations.SpotifyNoMatchError("No match"))
+    monkeypatch.setattr(integrations, "next_action", choose)
+    monkeypatch.setattr(integrations, "resolve_song", lookup)
+    monkeypatch.setattr(integrations, "get_player", lambda: Mock(access_token="test"))
+    with pytest.raises(RuntimeError, match="match either song"):
+        DesktopServices().prepare(
+            RadioRequest(
+                latitude=33.509722,
+                longitude=126.521944,
+                weather="Sunny",
+                time="10:00",
+                current_state="idle",
+            )
+        )
+    assert choose.call_count == lookup.call_count == 2

@@ -121,10 +121,7 @@ def test_activation_waits_for_prompt_then_captures_exactly_once(session) -> None
     eventually(lambda: "prompt" in services.events)
     assert "capture" not in services.events
     assert controller.status()["microphone_open"] is False
-    with pytest.raises(DesktopBusyError):
-        controller.activate()
-    with pytest.raises(DesktopBusyError):
-        controller.start()
+    assert controller.activate()["phase"] == "prompting"
     services.prompt_gate.set()
     eventually(lambda: "capture" in services.events)
     assert controller.status()["microphone_open"] is True
@@ -372,3 +369,148 @@ def test_start_endpoint_accepts_no_guidance_without_recording(body) -> None:
             fake.activate.assert_not_called()
         finally:
             app.state.radio_controller = original
+
+
+def test_repeated_start_while_launch_pending_reuses_one_session(session) -> None:
+    controller, services = session
+    entered, release = Event(), Event()
+    original_pause = services.pause
+
+    def pause():
+        original_pause()
+        entered.set()
+        release.wait(timeout=3)
+
+    services.pause = pause
+    try:
+        controller.start()
+        assert entered.wait(timeout=1)
+        assert controller.start()["phase"] == "activation_pending"
+        assert controller.start()["phase"] == "activation_pending"
+        assert services.requests == []
+    finally:
+        release.set()
+    eventually(lambda: controller.status()["phase"] == "music")
+    assert len(services.played) == 1
+    assert "prompt" not in services.events
+    assert "capture" not in services.events
+
+
+def test_repeated_start_while_preparing_does_not_cancel_generation(session) -> None:
+    controller, services = session
+    entered, release = Event(), Event()
+    prepare = services.prepare
+
+    def blocked_prepare(request):
+        entered.set()
+        release.wait(timeout=3)
+        return prepare(request)
+
+    services.prepare = blocked_prepare
+    try:
+        controller.start()
+        assert entered.wait(timeout=1)
+        eventually(lambda: controller.status()["phase"] == "preparing")
+        assert controller.start()["phase"] == "preparing"
+    finally:
+        release.set()
+    eventually(lambda: controller.status()["phase"] == "music")
+    assert len(services.played) == 1
+    assert controller.status()["error"] is None
+
+
+def test_repeated_start_during_playback_leaves_current_track_playing(session) -> None:
+    controller, services = session
+    controller.start()
+    eventually(lambda: len(services.requests) >= 2)
+    events = list(services.events)
+    history = controller.status()["history"]
+    assert controller.start()["phase"] == "music"
+    assert services.events == events
+    assert controller.status()["history"] == history
+    assert len(services.played) == 1
+
+
+def test_start_can_replace_pending_voice_capture_without_409(session) -> None:
+    controller, services = session
+    services.capture_gate.clear()
+    controller.activate()
+    eventually(lambda: "capture" in services.events)
+    controller.start()
+    eventually(lambda: controller.status()["phase"] == "music")
+    assert controller.status()["microphone_open"] is False
+    assert services.requests[0].user_input is None
+    assert services.events.count("capture") == 1
+    assert len(services.played) == 1
+
+
+def test_start_after_stop_is_a_new_session(session) -> None:
+    controller, services = session
+    controller.start()
+    eventually(lambda: len(services.requests) >= 2)
+    controller.stop()
+    eventually(lambda: controller.status()["phase"] == "idle")
+    controller.start()
+    eventually(lambda: len(services.played) == 2)
+    assert controller.status()["phase"] == "music"
+
+
+def test_repeated_start_endpoint_accepts_pending_request(session) -> None:
+    controller, services = session
+    entered, release = Event(), Event()
+    original_pause = services.pause
+
+    def pause():
+        original_pause()
+        entered.set()
+        release.wait(timeout=3)
+
+    services.pause = pause
+    headers = {"X-Radio-Activation": "explicit"}
+    with TestClient(app, client=("127.0.0.1", 10000)) as client:
+        original = app.state.radio_controller
+        app.state.radio_controller = controller
+        try:
+            assert client.post("/desktop/start", headers=headers).status_code == 202
+            assert entered.wait(timeout=1)
+            response = client.post("/desktop/start", headers=headers)
+            assert response.status_code == 202
+            assert response.json()["phase"] == "activation_pending"
+        finally:
+            release.set()
+            app.state.radio_controller = original
+
+
+def test_shutdown_controller_reports_retryable_service_unavailable() -> None:
+    headers = {"X-Radio-Activation": "explicit"}
+    with TestClient(app, client=("127.0.0.1", 10000)) as client:
+        original = app.state.radio_controller
+        fake = Mock(spec=RadioController)
+        fake.start.side_effect = DesktopBusyError("Radio is shutting down.")
+        app.state.radio_controller = fake
+        try:
+            response = client.post("/desktop/start", headers=headers)
+            assert response.status_code == 503
+            assert response.headers["retry-after"] == "1"
+        finally:
+            app.state.radio_controller = original
+
+
+def test_repeated_start_during_readiness_check_does_not_queue_restart(session) -> None:
+    controller, services = session
+    entered, release = Event(), Event()
+
+    def readiness():
+        entered.set()
+        release.wait(timeout=3)
+
+    services.ensure_ready.side_effect = readiness
+    try:
+        controller.start()
+        assert entered.wait(timeout=1)
+        assert controller.start()["phase"] == "activation_pending"
+    finally:
+        release.set()
+    eventually(lambda: controller.status()["phase"] == "music")
+    assert services.ensure_ready.call_count == 1
+    assert len(services.played) == 1

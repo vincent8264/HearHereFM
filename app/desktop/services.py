@@ -14,7 +14,7 @@ from app.music.router import get_player, is_connected
 from app.music.spotify_playback import SpotifyPlaybackError
 from app.radio.schemas import MusicAction, RadioAction, RadioRequest
 from app.radio.service import next_action
-from app.spotify.service import resolve_song
+from app.spotify.service import SpotifyNoMatchError, resolve_song
 from app.tts.service import get_tts_service
 from app.voice.microphone import capture_text
 from app.weather_api.service import get_weather
@@ -100,6 +100,27 @@ class DesktopServices:
 
     def prepare(self, request: RadioRequest) -> PreparedSection:
         action = next_action(request)
+        try:
+            return self._prepare_action(action, request)
+        except SpotifyNoMatchError:
+            action = next_action(
+                request,
+                retry_reason=(
+                    f"Spotify could not match {action.song_title} by {action.artist}. "
+                    "Choose a different, widely available recording with its exact "
+                    "catalog title and artist, while keeping the listener's preferences."
+                ),
+            )
+            try:
+                return self._prepare_action(action, request)
+            except SpotifyNoMatchError as exc:
+                raise RuntimeError(
+                    "Spotify could not match either song selection. Start again to retry."
+                ) from exc
+
+    def _prepare_action(
+        self, action: RadioAction, request: RadioRequest
+    ) -> PreparedSection:
         if action.mode == "narration":
             service = get_tts_service()
             filename = service.synthesize(action.text)

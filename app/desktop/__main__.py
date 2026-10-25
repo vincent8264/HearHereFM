@@ -116,9 +116,14 @@ def main(argv: list[str] | None = None) -> int:
                 timeout=10,
             )
             if response.status_code not in {200, 202}:
-                raise RuntimeError(
-                    f"Radio command failed with HTTP {response.status_code}."
-                )
+                message = f"Radio command failed with HTTP {response.status_code}."
+                try:
+                    detail = response.json().get("detail")
+                except (ValueError, AttributeError):
+                    detail = None
+                if isinstance(detail, str):
+                    message += f" {detail[:300]}"
+                raise RuntimeError(message)
             result = response.json()
         if sys.stdout is not None:
             print(json.dumps(result, ensure_ascii=False))

@@ -87,3 +87,12 @@ def test_failed_command_returns_nonzero_without_secret_details(
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "internal details" not in captured.err
+
+
+def test_failed_command_explains_server_error(monkeypatch, capsys) -> None:
+    monkeypatch.setattr(launcher, "ensure_server", Mock())
+    response = Mock(status_code=503)
+    response.json.return_value = {"detail": "Radio is shutting down."}
+    monkeypatch.setattr(launcher.requests, "post", Mock(return_value=response))
+    assert launcher.main(["start"]) == 1
+    assert "Radio is shutting down." in capsys.readouterr().err

@@ -53,13 +53,14 @@ def _rejection_reason(action: RadioAction, request: RadioRequest) -> str | None:
     return None
 
 
-def next_action(request: RadioRequest) -> RadioAction:
+def next_action(
+    request: RadioRequest, *, retry_reason: str | None = None
+) -> RadioAction:
     """Let the model choose a section, then enforce variety."""
     try:
         place = find_nearby_place(request.latitude, request.longitude)
     except PlaceLookupError:
         place = None
-    retry_reason = None
     for _ in range(2):
         action = choose_action(request, place, retry_reason=retry_reason)
         retry_reason = _rejection_reason(action, request)
