@@ -1,214 +1,139 @@
-# Hackathon starter
+# HearHereFM
 
-The integrated background application is started with
-`uv run --locked python -m app.desktop start` for contextual playback, or
-`uv run --locked python -m app.desktop activate` to speak a request. Configure the voice triggers and
-Spotify authorization using [desktop radio setup](docs/desktop.md). Microphone
-capture happens only after explicit activation and the spoken prompt.
+HearHereFM is a location-aware personal radio prototype. It combines music from
+Spotify with short spoken segments shaped by the listener's location, current
+weather, local time, recent playback, and spoken preferences. A headless desktop
+controller prepares the next segment while the current one plays, keeps a short
+playback history, and stops when the listener asks it to.
 
-A small Python 3.12 and FastAPI repository for a team hackathon. It has a
-health endpoint, tests, a smoke test, Ruff checks, and cross-platform CI.
-`POST /radio/next` uses GPT-6 Luna to choose music or narration and generate its
-content from location, weather, local time, recent played history, and optional
-listener input. The backend checks for repetition and limits consecutive songs.
-`GET /weather`
-fetches current conditions for supplied coordinates. The backend also looks up
-nearby named sights and museums through Geoapify and resolves suggested songs to Spotify
-track URIs through a separate endpoint. Spotify playback is handled by the client. See
-[`docs/contracts.md`](docs/contracts.md) for the request and response shapes.
+The project is built with Python 3.12 and FastAPI. GPT-6 Luna chooses the next
+song or writes narration; Kokoro generates local English speech; faster-whisper
+transcribes a request after explicit activation. Open-Meteo provides weather,
+and Geoapify can add a nearby named sight or museum when configured.
 
-Local English TTS uses Kokoro on CPU. When radio selects narration, submit its
-text to `POST /tts/jobs` during playback and poll for a ready audio URL. `POST /tts`
-also supports synchronous generation.
-See [TTS setup and integration](docs/tts.md) to download the model and generate audio.
+## What works today
 
-Headless speech input is available with `uv run --locked python -m app.voice`.
-It records one utterance and returns its text for the separately owned LLM.
-`POST /voice/transcribe` also accepts uploaded recordings. See
-[voice setup and desktop activation](docs/voice.md) for Siri and Windows Voice Access.
+- **Continuous radio session after activation:** the desktop controller selects,
+  prepares, and plays successive music or narration segments. It starts only
+  after a local command or configured OS voice shortcut. The microphone opens
+  for one prompted request, then closes during playback.
+- **Context:** desktop mode uses configured coordinates or an approximate
+  location from the server's public IP. It fetches weather when preparing a
+  segment and refreshes it after five minutes. Optional Geoapify lookup adds
+  nearby place context.
+- **Music and speech:** the controller resolves suggested songs through Spotify,
+  plays them on a Spotify Web Player, and plays Kokoro-generated narration
+  locally. It retains up to ten started segments and avoids repeats and long
+  runs of songs.
+- **Browser preview and API:** `/location` requests browser device location or
+  offers four demo presets, shows weather, and can preview a radio decision.
+  The preview does not start playback. The FastAPI routes also expose radio
+  decisions, weather, Spotify resolution and control, transcription, and TTS.
 
-To try device location in a browser, start the server and open
-<http://127.0.0.1:8000/location> on the same device. Allow location access when
-prompted, or choose a demo preset for Hollywood Boulevard, the Cairo Egyptian
-Museum, Jeju City, or Rio de Janeiro. The page sends the selected coordinates
-to `/weather`; its optional radio preview sends the coordinates, weather, and
-local time to `/radio/next`. No coordinates need to be typed. A browser on
-another device requires an HTTPS origin for device location permission; presets
-work without it. See
-[`docs/contracts.md`](docs/contracts.md#weather-and-location) for the integration
-boundary.
+This is a single-user local prototype. Desktop playback needs an authorized
+Spotify account and an available Web Player. The browser preview is a separate
+way to inspect context and a proposed next segment; it is not the desktop
+playback controller. See [desktop setup](docs/desktop.md) and
+[API contracts](docs/contracts.md) for details.
 
-## Prerequisites and uv installation
+## Quick start: desktop radio
 
-Install Git and [uv](https://docs.astral.sh/uv/getting-started/installation/).
-uv downloads and manages Python 3.12 for this project, so a separate Python
-installation is optional. Verify the install with `uv --version`.
-
-macOS or Linux:
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and run
+these commands from the repository root. `uv` manages Python 3.12 and the
+locked dependencies:
 
 ```sh
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv --version
+uv python install 3.12
+uv sync --locked
+uv run --locked python scripts/download_tts_models.py
+uv run --locked python scripts/download_stt_model.py
 ```
 
-Windows PowerShell (native Windows is supported; WSL is not required):
+Copy `.env.example` to `.env`. Set `OPENAI_API_KEY` and `SPOTIFY_CLIENT_ID` to
+real values. Register `http://127.0.0.1:8000/spotify/callback` as the redirect
+URI in your Spotify application. `GEOAPIFY_API_KEY` is optional. For a fixed
+demo location, set both `RADIO_LATITUDE` and `RADIO_LONGITUDE`; otherwise the
+desktop controller estimates the server's location from its public IP. Keep
+`.env` and credentials out of Git. The desktop Spotify login uses PKCE and does
+not require a client secret.
 
-```powershell
-powershell -ExecutionPolicy Bypass -c "irm https://astral.sh/uv/install.ps1 | iex"
-uv --version
-```
-
-If `uv` is not recognized immediately, open a new terminal and try again.
-
-## Initial setup
-
-From the repository root on macOS or Linux:
+Open [Spotify Web Player](https://open.spotify.com/) in a browser and play a
+song once so the browser is ready for audio. Then run:
 
 ```sh
-git clone <repository-url>
-cd <repository-directory>
-uv python install 3.12
-uv sync --locked
+uv run --locked python -m app.desktop status
+uv run --locked python -m app.desktop login
+uv run --locked python -m app.desktop activate
 ```
 
-From the repository root on Windows PowerShell:
+`status` starts the local daemon if needed but leaves the radio idle. `login`
+opens Spotify authorization in your browser. `activate` plays a prompt, records
+one spoken request, and starts the radio loop. For example, ask for upbeat music
+with shorter narration. The daemon stays on `127.0.0.1:8000` between commands;
+activating again updates the listener's preferences.
 
-```powershell
-git clone <repository-url>
-Set-Location <repository-directory>
-uv python install 3.12
-uv sync --locked
+```sh
+uv run --locked python -m app.desktop status
+uv run --locked python -m app.desktop stop
+uv run --locked python -m app.desktop shutdown
 ```
 
-Replace the angle-bracket placeholders with your team's Git URL and directory.
-The same `uv` commands work in both shells. `uv sync --locked` creates a local
-`.venv` and installs the versions recorded in `uv.lock`, including development
-tools. The virtual environment is ignored by Git.
+`stop` ends the session while leaving the daemon available. `shutdown` stops
+the daemon. The [desktop guide](docs/desktop.md) covers Siri and Windows Voice
+Access shortcuts, audio setup, and troubleshooting. Those OS shortcuts require
+separate configuration; they are not installed by the commands above.
 
-## Run and check the app
+## Try the browser preview
 
-Start the server in one terminal:
+Run the API server if the desktop daemon is not already using port 8000:
 
 ```sh
 uv run --locked uvicorn app.main:app --reload
 ```
 
-Open <http://127.0.0.1:8000/health> to see `{"status":"ok"}`. In another
-terminal, run the live smoke test:
+Open <http://127.0.0.1:8000/location> on the same device. Allow device location
+or choose a preset for Hollywood Boulevard, Cairo, Jeju, or Rio de Janeiro.
+The page fetches current weather and can request a sample next radio segment.
+Device location in a browser on another device needs HTTPS; the presets do not.
+Interactive API docs are at <http://127.0.0.1:8000/docs>.
 
-```sh
-uv run --locked python scripts/smoke_test.py
-```
+Do not run the development server and desktop daemon on port 8000 at the same
+time. The browser preview can use the already running desktop daemon.
 
-For a different address, use
-`uv run --locked python scripts/smoke_test.py --base-url http://127.0.0.1:9000`.
-Stop the server with Ctrl+C. The interactive API docs are at
-<http://127.0.0.1:8000/docs>.
+## How it fits together
 
-Run automated tests and style checks from the repository root:
+1. Explicit activation captures a spoken request, or the local `/desktop/start`
+   route receives already transcribed text.
+2. The desktop controller gathers coordinates and weather, then uses the same
+   decision logic as `POST /radio/next` for the next segment. The model may use
+   optional nearby place context and the last ten played segments.
+3. For music, the controller resolves a Spotify URI and confirms playback on a
+   Web Player. For narration, it synthesizes a WAV and plays it locally.
+4. Once a segment starts, the controller prepares the following one in a
+   background worker. Stop or a new activation cancels the old session's
+   subsequent playback.
+
+The API can also be used independently: `GET /weather` accepts coordinates;
+`POST /radio/next` accepts coordinates, weather, local time, current state, and
+recent history; `POST /spotify/resolve` resolves a song suggestion; and
+`POST /tts/jobs` queues narration audio. The standalone radio endpoint expects
+the caller to supply weather and playback history. Request and response examples
+are in [API contracts](docs/contracts.md).
+
+## Development and validation
+
+Run from the repository root:
 
 ```sh
 uv run --locked pytest
 uv run --locked ruff check .
 uv run --locked ruff format --check .
+node --test tests/test_device_location.mjs
 ```
 
-The browser location client also has dependency-free JavaScript tests:
-`node --test tests/test_device_location.mjs` (requires Node.js).
-
-To apply formatting to code you changed, run `uv run --locked ruff format .`.
-
-## Dependencies and environment variables
-
-Coordinate dependency changes because `pyproject.toml` and `uv.lock` are shared:
-
-```sh
-uv add <runtime-package>
-uv add --dev <development-package>
-uv sync --locked
-```
-
-Commit changes to both dependency files in the same feature branch. Do not
-commit `.venv`. The radio route requires `OPENAI_API_KEY` in the server process
-environment or in a `.env` file at the repository root. A process environment
-value takes precedence over `.env`. Copy `.env.example` to `.env` and replace
-the placeholder with your key. Keep real keys local and never commit
-credentials. Requests to the model use `gpt-6-luna`, and each call uses API
-credits. Automated tests mock the model and do not use credits.
-
-For `POST /spotify/resolve`, set `SPOTIFY_CLIENT_ID` and
-`SPOTIFY_CLIENT_SECRET` in the server environment or `.env`. These are server-side
-Spotify app credentials and must not be sent to the client. The resolver uses
-Spotify client credentials to search its catalog; it does not control playback.
-
-For nearby places in `POST /radio/next`, set `GEOAPIFY_API_KEY` in the server
-environment or `.env`. The backend sends it in an `x-api-key` header. Missing
-credentials or a provider failure leave the radio request working without a
-nearby place.
-
-Example radio request while a music section is playing:
-
-```json
-{
-  "latitude": 37.7749,
-  "longitude": -122.4194,
-  "weather": "Sunny, 20 C",
-  "time": "18:30",
-  "current_state": "music",
-  "played_history": [
-    {"mode": "music", "song_title": "Lovely Day", "artist": "Bill Withers"}
-  ],
-  "user_input": "Play more lively music"
-}
-```
-
-Send this JSON to `POST /radio/next`. If the response mode is `narration`, send
-its `text` to `POST /tts/jobs`. If it is `music`, send its title and artist to
-`POST /spotify/resolve` with a two-letter market, such as `US`, to obtain a
-`spotify_uri` for playback. Add each section to `played_history` once playback
-starts; send at most the latest ten in oldest-to-newest order. `user_input` is
-optional and can be omitted. Calling after playback ends also works, but
-requires waiting for generation. TTS and Spotify playback are separate stages;
-the client pauses current audio before starting a ready narration.
-
-For both radio modes, the backend searches within 500 metres for a named
-Geoapify sight or museum. If one is nearby, the model receives its name, type, and approximate
-distance. If the lookup fails or finds nothing, the radio request continues
-without place context. The model is instructed not to invent facts about a place.
-
-## Team workflow and AI coding agents
-
-Before dividing connected features, agree on their inputs and outputs in
-[`docs/contracts.md`](docs/contracts.md). Pick file or component owners, create
-a feature branch, and keep each change focused:
-
-```sh
-git switch main
-git pull
-git switch -c feature/<short-description>
-# edit files, then run tests and Ruff checks
-git add <files-you-changed>
-git commit -m "Describe the change"
-git push -u origin feature/<short-description>
-```
-
-Replace the placeholders with names that fit your team. Open a pull request
-for review and let CI run on Linux, macOS, and Windows. Do not commit directly
-to `main`. `AGENTS.md` is the shared instruction file for OpenAI Codex;
-Claude Code imports it through `CLAUDE.md`. Agent changes follow the same
-branch, ownership, testing, and review rules as human changes.
-
-## Cross-platform troubleshooting
-
-- Run commands from the repository root, where `pyproject.toml` and `uv.lock`
-  live. The pytest configuration makes `app` importable there on all platforms.
-- If `uv` cannot find Python 3.12, run `uv python install 3.12`, then retry
-  `uv sync --locked`.
-- If a locked command reports that the lockfile is outdated, coordinate a
-  dependency update, run `uv lock`, and commit the updated `uv.lock` with
-  `pyproject.toml`.
-- If the smoke test cannot connect, leave the server running in its own
-  terminal and check that its host and port match `--base-url`.
-- If port 8000 is in use, start with
-  `uv run --locked uvicorn app.main:app --reload --port 9000` and pass
-  `--base-url http://127.0.0.1:9000` to the smoke test.
+The JavaScript test requires Node.js. The Python tests mock external providers
+and audio devices. A full demo still depends on network access, local audio
+devices, downloaded speech models, and a working Spotify authorization and
+playback device. The [desktop guide](docs/desktop.md) describes those setup
+requirements; [TTS](docs/tts.md) and [voice](docs/voice.md) have component
+details.
