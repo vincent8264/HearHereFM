@@ -8,8 +8,13 @@ if (-not (Test-Path $pythonPath)) {
 $outputDir = Join-Path $projectDir "data\voice"
 New-Item -ItemType Directory -Force -Path $outputDir | Out-Null
 $shell = New-Object -ComObject WScript.Shell
-foreach ($command in @("activate", "stop")) {
-    $name = if ($command -eq "activate") { "Radio take my request.lnk" } else { "Radio stop playback.lnk" }
+$shortcutNames = @{
+    start = "Radio start playback.lnk"
+    activate = "Radio take my request.lnk"
+    stop = "Radio stop playback.lnk"
+}
+foreach ($command in @("start", "activate", "stop")) {
+    $name = $shortcutNames[$command]
     $shortcutPath = Join-Path $outputDir $name
     $shortcut = $shell.CreateShortcut($shortcutPath)
     $shortcut.TargetPath = $pythonPath

@@ -63,6 +63,9 @@ the radio endpoint does not remember preferences between calls.
 Recordings are processed in memory and not saved. Transcript files in `data/voice/`
 are ignored by Git and remain local until removed.
 
+For playback without recording a request, use `Radio start playback` and
+`scripts/start_radio_macos.sh`; see [desktop setup](desktop.md).
+
 ## macOS: Siri launches a Shortcut
 
 Apple documents that Siri can run a Shortcut by its name:
@@ -106,11 +109,12 @@ One-time setup on Windows:
    .\scripts\create_voice_shortcut_windows.ps1
    ```
 
-2. The script creates ignored start/stop `.lnk` files in `data\voice`, targeting
-   `pythonw.exe -m app.desktop activate` or `stop`. No console is shown.
+2. The script creates ignored playback/request/stop `.lnk` files in `data\voice`, targeting
+   `pythonw.exe -m app.desktop start`, `activate`, or `stop`. No console is shown.
    It does not install an autostart service or change system settings.
 3. Enable Windows Voice Access. Create custom voice shortcuts named
-   `Radio take my request` and `Radio stop playback`, opening the matching `.lnk`.
+   `Radio start playback`, `Radio take my request`, and `Radio stop playback`,
+   opening the matching `.lnk`.
 4. Say the trigger, allow a brief handoff, then speak the listening request.
    The controller transcribes it, supplies `user_input`, and manages playback.
 

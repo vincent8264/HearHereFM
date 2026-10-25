@@ -22,16 +22,19 @@ def test_status_does_not_open_microphone_or_activate(
     post.assert_not_called()
 
 
+@pytest.mark.parametrize("command", ["activate", "start"])
 def test_voice_launcher_uses_explicit_activation_header(
     monkeypatch: pytest.MonkeyPatch,
+    command: str,
 ) -> None:
     monkeypatch.setattr(launcher, "ensure_server", Mock())
     response = Mock(status_code=202)
     response.json.return_value = {"phase": "activation_pending"}
     post = Mock(return_value=response)
     monkeypatch.setattr(launcher.requests, "post", post)
-    assert launcher.main(["activate"]) == 0
-    assert post.call_args.args[0].endswith("/desktop/activate")
+    assert launcher.main([command]) == 0
+    assert post.call_args.args[0].endswith(f"/desktop/{command}")
+    assert post.call_args.kwargs["json"] is None
     assert post.call_args.kwargs["headers"]["X-Radio-Activation"] == "explicit"
 
 

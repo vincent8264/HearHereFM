@@ -79,7 +79,7 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "command",
-        choices=["activate", "stop", "status", "login", "shutdown"],
+        choices=["start", "activate", "stop", "status", "login", "shutdown"],
         nargs="?",
         default="activate",
     )

@@ -1,7 +1,8 @@
 # Hackathon starter
 
 The integrated background application is started with
-`uv run --locked python -m app.desktop activate`. Configure the voice triggers and
+`uv run --locked python -m app.desktop start` for contextual playback, or
+`uv run --locked python -m app.desktop activate` to speak a request. Configure the voice triggers and
 Spotify authorization using [desktop radio setup](docs/desktop.md). Microphone
 capture happens only after explicit activation and the spoken prompt.
 

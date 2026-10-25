@@ -11,10 +11,15 @@ Use these uncommon phrases as the **OS shortcut names**, without punctuation:
 
 | Action | Mac Siri phrase | Windows Voice Access phrase |
 | --- | --- | --- |
+| Start without a request | Hey Siri, Radio start playback | Radio start playback |
 | Start or update preferences | Hey Siri, Radio take my request | Radio take my request |
 | Stop playback and capture | Hey Siri, Radio stop playback | Radio stop playback |
 
-After activating, wait for `Tell me what you would like to hear`, then say the
+`Radio start playback` starts from location, weather, and time without playing
+a listening prompt or opening the microphone. It clears previous listener
+guidance while keeping playback history to avoid repeats.
+
+After `Radio take my request`, wait for `Tell me what you would like to hear`, then say the
 request, for example `Play upbeat music today with less talking`. Prompt playback
 finishes before microphone capture begins. Capture waits at most 10 seconds for
 speech, ends after 1.2 seconds of silence, and caps audio at 60 seconds. The
@@ -85,23 +90,30 @@ the connected user too, or app client credentials for catalog-only callers.
 
 ## macOS Siri setup
 
-Create two Shortcuts with the exact names in the table. Each needs just a
+Create three Shortcuts with the exact names in the table. Each needs just a
 **Run Shell Script** action:
 
-Start/update:
+Start without a request (`Radio start playback`):
+
+```sh
+/bin/sh /Users/skylining/compiled16/scripts/start_radio_macos.sh
+```
+
+Start/update a spoken request (`Radio take my request`):
 
 ```sh
 /bin/sh /Users/skylining/compiled16/scripts/start_voice_macos.sh
 ```
 
-Stop:
+Stop (`Radio stop playback`):
 
 ```sh
 /bin/sh /Users/skylining/compiled16/scripts/stop_voice_macos.sh
 ```
 
 Use the real checkout path on a different computer. Allow scripts in Shortcuts
-settings and grant microphone permission when macOS requests it. Do not add
+settings, leave **Run as Administrator** unchecked, and grant microphone
+permission when macOS requests it for the spoken-request shortcut. Do not add
 another spoken prompt to the Shortcut: the controller already pauses Spotify,
 plays its prompt, waits briefly, and only then opens the microphone.
 The scripts launch/control the daemon and do not open a Terminal window.
@@ -119,9 +131,10 @@ Run once in PowerShell from the repository:
 .\scripts\create_voice_shortcut_windows.ps1
 ```
 
-This creates `data\voice\Radio take my request.lnk` and
+This creates `data\voice\Radio start playback.lnk`,
+`data\voice\Radio take my request.lnk`, and
 `data\voice\Radio stop playback.lnk`, using the virtual environment's `pythonw.exe`
-so no console is shown. In Voice Access, create two custom voice shortcuts with
+so no console is shown. In Voice Access, create three custom voice shortcuts with
 the table's phrases, each opening the matching `.lnk` file. Custom shortcuts are
 documented for English variants. Follow
 [Microsoft's setup](https://support.microsoft.com/en-gb/topic/use-voice-to-create-voice-access-shortcuts-3f03bdb9-a9ee-47a0-81d6-13c1c8ba2a08).
@@ -151,6 +164,7 @@ already in flight are bounded by their provider timeouts.
 ## CLI and local control
 
 ```sh
+uv run --locked python -m app.desktop start
 uv run --locked python -m app.desktop activate
 uv run --locked python -m app.desktop stop
 uv run --locked python -m app.desktop status
@@ -158,15 +172,17 @@ uv run --locked python -m app.desktop activate --input recorded-request.wav
 uv run --locked python -m app.desktop shutdown
 ```
 
-`activate --input` transcribes an existing recording rather than opening a mic.
+`start` begins contextual playback without microphone capture or previous
+listener guidance. `activate --input` transcribes an existing recording rather than opening a mic.
 `stop` stops the radio but keeps the daemon/models resident. `shutdown` gracefully
 stops the managed daemon; use it before updating code or changing branches.
 
 The local endpoints are `/desktop/activate`, `/desktop/start`, `/desktop/stop`,
 `/desktop/status`, and `/desktop/shutdown`. They require loopback and
 `X-Radio-Activation: explicit`; a normal browser request or external client cannot
-arm capture. `/desktop/start` accepts `{"user_input":"..."}` for already transcribed
-input, and does not open a microphone. This is a single-user desktop controller,
+arm capture. `/desktop/start` accepts no body (or `{}` / `{"user_input":null}`)
+for contextual playback; `{"user_input":"..."}` still accepts already transcribed
+guidance. Neither form opens a microphone. This is a single-user desktop controller,
 not a multi-user hosted service.
 
 ## Validation limits

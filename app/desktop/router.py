@@ -36,16 +36,17 @@ def activate(controller: Controller) -> dict:
 
 
 class StartRequest(BaseModel):
-    user_input: str = Field(min_length=1, max_length=2000)
+    user_input: str | None = Field(default=None, min_length=1, max_length=2000)
 
 
 @router.post("/start", status_code=202)
-def start(body: StartRequest, controller: Controller) -> dict:
-    """Accept an already transcribed string; do not open a microphone."""
-    if not body.user_input.strip():
+def start(controller: Controller, body: StartRequest | None = None) -> dict:
+    """Start from context or an already transcribed string, without recording."""
+    text = body.user_input if body is not None else None
+    if text is not None and not text.strip():
         raise HTTPException(422, "Listening request cannot be blank.")
     try:
-        return controller.activate(body.user_input)
+        return controller.start() if text is None else controller.activate(text)
     except DesktopBusyError as exc:
         raise HTTPException(409, str(exc)) from exc
 

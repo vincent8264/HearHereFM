@@ -125,7 +125,7 @@ For `POST /radio/next`, invalid input returns HTTP 422. Missing
 | LLM | Select a mode and generate narration or a song from context, history, and listener input | Implemented |
 | Spotify resolver | Match the chosen title and artist to a market-filtered Spotify track URI | Implemented |
 | Spotify playback | OAuth and Spotify Connect play/pause/state | Implemented; requires user authorization and a playback device |
-| Desktop controller | Voice-triggered capture; retain history; prepare and play sections without a frontend | Implemented; see [desktop setup](desktop.md) |
+| Desktop controller | Start from context or voice-triggered capture; retain history; prepare and play sections without a frontend | Implemented; see [desktop setup](desktop.md) |
 | TTS | Convert English narration to WAV with Kokoro; queue jobs and serve audio URLs | Implemented |
 | Places | Find a nearby named sight or museum with Geoapify; detailed verified facts are future work | Basic lookup implemented |
 

@@ -44,6 +44,13 @@ class RadioController:
             }
 
     def activate(self, text: str | None = None) -> dict:
+        return self._schedule(text, capture=text is None)
+
+    def start(self) -> dict:
+        """Start with contextual choices, clearing previous listener guidance."""
+        return self._schedule(None, capture=False)
+
+    def _schedule(self, text: str | None, *, capture: bool) -> dict:
         with self._lock:
             if self._closed:
                 raise DesktopBusyError("Radio is shutting down.")
@@ -56,7 +63,7 @@ class RadioController:
             self._capture_pending = True
             self._phase = "activation_pending"
             self._error = None
-            self._session.submit(self._activate, revision, self._cancel, text)
+            self._session.submit(self._activate, revision, self._cancel, text, capture)
             return self.status()
 
     def stop(self) -> dict:
@@ -91,12 +98,14 @@ class RadioController:
             if revision == self._revision:
                 self._phase = phase
 
-    def _activate(self, revision: int, cancel: Event, text: str | None) -> None:
+    def _activate(
+        self, revision: int, cancel: Event, text: str | None, capture: bool
+    ) -> None:
         try:
             if cancel.is_set():
                 return
             self.services.pause()
-            if text is None:
+            if capture:
                 self._set_phase(revision, "prompting")
                 if not self.services.prompt(cancel) or cancel.wait(0.3):
                     return
@@ -104,9 +113,9 @@ class RadioController:
                 text = self.services.capture(cancel)
             if cancel.is_set():
                 return
-            if not text.strip() or len(text) > 2000:
+            if text is not None and (not text.strip() or len(text) > 2000):
                 raise ValueError("Spoken request must contain 1 to 2,000 characters.")
-            if text.strip().casefold().strip(".!。！") in {
+            if text is not None and text.strip().casefold().strip(".!。！") in {
                 "cancel",
                 "cancel radio",
                 "never mind",
@@ -122,7 +131,7 @@ class RadioController:
             with self._lock:
                 if revision != self._revision:
                     return
-                self._user_input = text.strip()
+                self._user_input = text.strip() if text is not None else None
                 self._capture_pending = False
             self.services.ensure_ready()
             self._run(revision, cancel)
@@ -155,7 +164,7 @@ class RadioController:
                     self._capture_pending = False
 
     def _prepare(
-        self, history: list[PlayedSection], user_input: str
+        self, history: list[PlayedSection], user_input: str | None
     ) -> PreparedSection:
         context = self.services.context()
         request = RadioRequest(

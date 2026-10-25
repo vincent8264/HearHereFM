@@ -1,5 +1,5 @@
 #!/bin/sh
-# Call from a Siri Shortcut named Stop Radio. No microphone is opened.
+# Call from a Siri Shortcut named Radio stop playback. No microphone is opened.
 set -eu
 project_dir=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$project_dir"

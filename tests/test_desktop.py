@@ -72,7 +72,10 @@ class FakeServices:
                 audio_path=Path("fake.wav"),
             )
         return PreparedSection(
-            MusicAction(song_title=request.user_input[:50], artist="Artist"),
+            MusicAction(
+                song_title=(request.user_input or "Contextual song")[:50],
+                artist="Artist",
+            ),
             uri="spotify:track:4iV5W9uYEdYUVa79Axb7Rh",
         )
 
@@ -120,6 +123,8 @@ def test_activation_waits_for_prompt_then_captures_exactly_once(session) -> None
     assert controller.status()["microphone_open"] is False
     with pytest.raises(DesktopBusyError):
         controller.activate()
+    with pytest.raises(DesktopBusyError):
+        controller.start()
     services.prompt_gate.set()
     eventually(lambda: "capture" in services.events)
     assert controller.status()["microphone_open"] is True
@@ -275,6 +280,7 @@ def test_completed_future_timeout_is_not_mistaken_for_pending_work(session) -> N
 def test_desktop_control_requires_loopback_and_explicit_activation() -> None:
     with TestClient(app, client=("127.0.0.1", 10000)) as client:
         assert client.post("/desktop/activate").status_code == 403
+        assert client.post("/desktop/start").status_code == 403
         status = client.get(
             "/desktop/status", headers={"X-Radio-Activation": "explicit"}
         )
@@ -311,5 +317,58 @@ def test_programmatic_start_accepts_text_without_opening_mic() -> None:
                 ).status_code
                 == 422
             )
+        finally:
+            app.state.radio_controller = original
+
+
+def test_default_start_uses_context_without_prompt_or_microphone(session) -> None:
+    controller, services = session
+    controller.start()
+    eventually(lambda: controller.status()["phase"] == "music")
+    assert "prompt" not in services.events
+    assert "capture" not in services.events
+    assert controller.status()["microphone_open"] is False
+    assert controller.status()["has_user_input"] is False
+    request = services.requests[0]
+    assert request.user_input is None
+    assert request.current_state == "idle"
+    assert request.latitude == 32.7
+    assert request.weather == "Sunny"
+    services.ensure_ready.assert_called_once()
+
+
+def test_default_start_clears_old_guidance_and_discards_prefetched_content(
+    session,
+) -> None:
+    controller, services = session
+    controller.activate("Play loud rock music.")
+    eventually(lambda: len(services.requests) >= 2)
+    controller.start()
+    eventually(lambda: len(services.played) >= 2)
+    assert services.played[-1].action.song_title == "Contextual song"
+    assert all(section.action.mode == "music" for section in services.played)
+    assert services.requests[-1].user_input is None
+    assert controller.status()["has_user_input"] is False
+    assert "prompt" not in services.events
+    assert "capture" not in services.events
+
+
+@pytest.mark.parametrize("body", [None, {}, {"user_input": None}])
+def test_start_endpoint_accepts_no_guidance_without_recording(body) -> None:
+    headers = {"X-Radio-Activation": "explicit"}
+    with TestClient(app, client=("127.0.0.1", 10000)) as client:
+        original = app.state.radio_controller
+        fake = Mock(spec=RadioController)
+        fake.start.return_value = {
+            "phase": "activation_pending",
+            "microphone_open": False,
+        }
+        app.state.radio_controller = fake
+        try:
+            response = client.post("/desktop/start", json=body, headers=headers)
+            assert response.status_code == 202
+            assert response.json()["microphone_open"] is False
+            fake.start.assert_called_once_with()
+            fake.activate.assert_not_called()
         finally:
             app.state.radio_controller = original
